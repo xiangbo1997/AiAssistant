@@ -32,19 +32,20 @@ struct TranslationView: View {
             // 翻译区域
             HStack(spacing: 0) {
                 // 源文本
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("原文")
                         .font(BuBuFonts.caption)
-                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.7))
 
                     TextEditor(text: $sourceText)
                         .font(BuBuFonts.body)
+                        .foregroundColor(BuBuColors.chocolateBrown)
                         .scrollContentBackground(.hidden)
-                        .padding(10)
+                        .padding(12)
                         .background(
-                            RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                            RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
                                 .fill(Color.white)
-                                .shadow(color: BuBuColors.chocolateBrown.opacity(0.04), radius: 4, x: 0, y: 2)
+                                .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 6, x: 0, y: 3)
                         )
 
                     HStack {
@@ -59,6 +60,7 @@ struct TranslationView: View {
                             translatedText = ""
                         } label: {
                             Image(systemName: "xmark.circle")
+                                .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
                         }
                         .buttonStyle(.plain)
@@ -70,12 +72,13 @@ struct TranslationView: View {
                             }
                         } label: {
                             Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.skyBlue)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(12)
+                .padding(14)
 
                 // 交换按钮
                 VStack {
@@ -85,12 +88,12 @@ struct TranslationView: View {
                         swapLanguages()
                     } label: {
                         Image(systemName: "arrow.left.arrow.right")
-                            .font(.system(size: 16))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(BuBuColors.skyBlue)
-                            .padding(8)
+                            .padding(10)
                             .background(
                                 Circle()
-                                    .fill(BuBuColors.skyBlue.opacity(0.1))
+                                    .fill(BuBuColors.skyBlue.opacity(0.12))
                             )
                     }
                     .buttonStyle(.plain)
@@ -100,13 +103,13 @@ struct TranslationView: View {
                 }
 
                 // 译文
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("译文")
                         .font(BuBuFonts.caption)
-                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.7))
 
                     if isTranslating {
-                        VStack {
+                        VStack(spacing: 10) {
                             Spacer()
                             ProgressView()
                                 .tint(BuBuColors.skyBlue)
@@ -117,19 +120,20 @@ struct TranslationView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(
-                            RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                            RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
                                 .fill(Color.white)
-                                .shadow(color: BuBuColors.chocolateBrown.opacity(0.04), radius: 4, x: 0, y: 2)
+                                .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 6, x: 0, y: 3)
                         )
                     } else {
                         TextEditor(text: .constant(translatedText))
                             .font(BuBuFonts.body)
+                            .foregroundColor(BuBuColors.chocolateBrown)
                             .scrollContentBackground(.hidden)
-                            .padding(10)
+                            .padding(12)
                             .background(
-                                RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                                RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
                                     .fill(Color.white)
-                                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.04), radius: 4, x: 0, y: 2)
+                                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 6, x: 0, y: 3)
                             )
                     }
 
@@ -151,6 +155,7 @@ struct TranslationView: View {
                             NSPasteboard.general.setString(translatedText, forType: .string)
                         } label: {
                             Image(systemName: "doc.on.doc")
+                                .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.skyBlue)
                         }
                         .buttonStyle(.plain)
@@ -160,13 +165,14 @@ struct TranslationView: View {
                             speakText(translatedText)
                         } label: {
                             Image(systemName: "speaker.wave.2")
+                                .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.lavender)
                         }
                         .buttonStyle(.plain)
                         .disabled(translatedText.isEmpty)
                     }
                 }
-                .padding(12)
+                .padding(14)
             }
 
             Divider()
@@ -178,18 +184,19 @@ struct TranslationView: View {
                 Button {
                     performTranslation()
                 } label: {
-                    HStack {
+                    HStack(spacing: 8) {
                         Image(systemName: "globe")
+                            .font(.system(size: 16, weight: .medium))
                         Text("翻译")
                     }
                     .font(BuBuFonts.headline)
                     .foregroundColor(.white)
-                    .frame(width: 140)
-                    .padding(.vertical, 12)
+                    .frame(width: 150)
+                    .padding(.vertical, 13)
                     .background(
                         RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
                             .fill(BuBuColors.skyBlue)
-                            .shadow(color: BuBuColors.skyBlue.opacity(0.3), radius: 8, x: 0, y: 4)
+                            .shadow(color: BuBuColors.skyBlue.opacity(0.35), radius: 12, x: 0, y: 6)
                     )
                 }
                 .buttonStyle(.plain)
@@ -199,7 +206,7 @@ struct TranslationView: View {
 
                 Spacer()
             }
-            .padding(16)
+            .padding(18)
             .background(BuBuColors.creamWhite)
         }
         .onAppear {
@@ -231,11 +238,12 @@ struct TranslationView: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 120)
+            .frame(width: 130)
             .tint(BuBuColors.skyBlue)
 
             Image(systemName: "arrow.right")
-                .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(BuBuColors.skyBlue.opacity(0.6))
 
             // 目标语言
             Picker("目标语言", selection: $targetLanguage) {
@@ -244,7 +252,7 @@ struct TranslationView: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 120)
+            .frame(width: 130)
             .tint(BuBuColors.skyBlue)
 
             Spacer()
@@ -254,15 +262,21 @@ struct TranslationView: View {
                 showHistory.toggle()
             } label: {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 16))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundColor(showHistory ? BuBuColors.skyBlue : BuBuColors.chocolateBrown.opacity(0.5))
+                    .padding(8)
+                    .background(
+                        Circle()
+                            .fill(showHistory ? BuBuColors.skyBlue.opacity(0.12) : Color.clear)
+                    )
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showHistory) {
                 translationHistoryPopover
             }
         }
-        .padding(14)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .background(BuBuColors.creamWhite)
     }
 

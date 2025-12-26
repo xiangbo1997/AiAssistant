@@ -27,8 +27,9 @@ struct MainPanelView: View {
             // 内容区域
             contentView
         }
-        .frame(minWidth: 400, minHeight: 500)
+        .frame(minWidth: 420, minHeight: 520)
         .background(BuBuColors.warmGradient)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .onReceive(NotificationCenter.default.publisher(for: .switchPanel)) { notification in
             if let panelType = notification.object as? PanelType {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -41,13 +42,13 @@ struct MainPanelView: View {
     // MARK: - 标签栏
 
     private var tabBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             TabButton(
                 title: "便签",
                 icon: "note.text",
                 isSelected: selectedTab == .notes
             ) {
-                withAnimation { selectedTab = .notes }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .notes }
             }
 
             TabButton(
@@ -55,7 +56,7 @@ struct MainPanelView: View {
                 icon: "magnifyingglass",
                 isSelected: selectedTab == .search
             ) {
-                withAnimation { selectedTab = .search }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .search }
             }
 
             TabButton(
@@ -63,14 +64,14 @@ struct MainPanelView: View {
                 icon: "globe",
                 isSelected: selectedTab == .translation
             ) {
-                withAnimation { selectedTab = .translation }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .translation }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .background(
             BuBuColors.creamWhite
-                .shadow(color: BuBuColors.chocolateBrown.opacity(0.05), radius: 4, x: 0, y: 2)
+                .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 8, x: 0, y: 3)
         )
     }
 
@@ -99,28 +100,29 @@ struct TabButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(BuBuFonts.body)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
                 Text(title)
                     .font(BuBuFonts.headline)
             }
-            .foregroundColor(isSelected ? .white : BuBuColors.chocolateBrown)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
+            .foregroundColor(isSelected ? .white : BuBuColors.chocolateBrown.opacity(0.8))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 11)
             .background(
                 RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
-                    .fill(isSelected ? BuBuColors.skyBlue : BuBuColors.creamWhite)
+                    .fill(isSelected ? BuBuColors.skyBlue : Color.white.opacity(0.6))
                     .shadow(
-                        color: isSelected ? BuBuColors.skyBlue.opacity(0.3) : Color.clear,
-                        radius: 8,
+                        color: isSelected ? BuBuColors.skyBlue.opacity(0.35) : Color.clear,
+                        radius: 10,
                         x: 0,
-                        y: 4
+                        y: 5
                     )
             )
+            .scaleEffect(isSelected ? 1.02 : 1.0)
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
 }
 

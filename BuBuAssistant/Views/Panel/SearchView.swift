@@ -44,14 +44,16 @@ struct SearchView: View {
     // MARK: - 搜索栏
 
     private var searchBar: some View {
-        HStack(spacing: 12) {
-            HStack {
+        HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(BuBuColors.skyBlue)
 
                 TextField("输入搜索内容...", text: $searchQuery)
                     .textFieldStyle(.plain)
                     .font(BuBuFonts.body)
+                    .foregroundColor(BuBuColors.chocolateBrown)
                     .onSubmit {
                         performSearch()
                     }
@@ -62,36 +64,43 @@ struct SearchView: View {
                         searchResults = []
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
                             .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
                     .fill(Color.white)
-                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 4, x: 0, y: 2)
+                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 8, x: 0, y: 3)
             )
 
             Button {
                 performSearch()
             } label: {
-                Text("搜索")
-                    .font(BuBuFonts.headline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
-                            .fill(BuBuColors.skyBlue)
-                    )
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkle.magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                    Text("搜索")
+                        .font(BuBuFonts.headline)
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                        .fill(BuBuColors.skyBlue)
+                        .shadow(color: BuBuColors.skyBlue.opacity(0.35), radius: 10, x: 0, y: 5)
+                )
             }
             .buttonStyle(.plain)
             .disabled(searchQuery.isEmpty || isSearching)
             .opacity(searchQuery.isEmpty || isSearching ? 0.6 : 1)
         }
-        .padding(16)
+        .padding(18)
         .background(BuBuColors.creamWhite)
     }
 
@@ -340,7 +349,7 @@ struct SearchResultRow: View {
     let result: SearchResult
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(result.title)
                 .font(BuBuFonts.headline)
                 .foregroundColor(BuBuColors.chocolateBrown)
@@ -351,21 +360,22 @@ struct SearchResultRow: View {
                 .textSelection(.enabled)
 
             if let source = result.source {
-                HStack {
-                    Image(systemName: "link")
-                        .font(BuBuFonts.tiny)
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11))
                     Text(source)
                         .font(BuBuFonts.caption)
                 }
                 .foregroundColor(BuBuColors.skyBlue)
+                .padding(.top, 4)
             }
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
                 .fill(Color.white)
-                .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 8, x: 0, y: 3)
+                .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 12, x: 0, y: 4)
         )
     }
 }

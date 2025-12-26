@@ -59,29 +59,33 @@ struct NotesView: View {
     // MARK: - 工具栏
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             // 搜索框
-            HStack {
+            HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(BuBuColors.skyBlue)
                 TextField("搜索便签...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(BuBuFonts.body)
+                    .foregroundColor(BuBuColors.chocolateBrown)
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
                             .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
             .background(
-                RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
                     .fill(Color.white)
-                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 4, x: 0, y: 2)
+                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 8, x: 0, y: 3)
             )
 
             // 筛选菜单
@@ -100,7 +104,7 @@ struct NotesView: View {
                 }
             } label: {
                 Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 18))
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundColor(BuBuColors.skyBlue)
             }
             .menuStyle(.borderlessButton)
@@ -120,7 +124,7 @@ struct NotesView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 18))
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundColor(BuBuColors.lavender)
             }
             .menuStyle(.borderlessButton)
@@ -142,7 +146,7 @@ struct NotesView: View {
                 }
             } label: {
                 Image(systemName: currentViewMode.icon)
-                    .font(.system(size: 18))
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundColor(BuBuColors.mintGreen)
             }
             .menuStyle(.borderlessButton)
@@ -152,12 +156,13 @@ struct NotesView: View {
                 showingAddNote = true
             } label: {
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.system(size: 24, weight: .medium))
                     .foregroundColor(BuBuColors.skyBlue)
             }
             .buttonStyle(.plain)
         }
-        .padding(14)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .background(BuBuColors.creamWhite)
         .sheet(isPresented: $showingAddNote) {
             NoteDTOEditorView(mode: .add) { note in
@@ -226,7 +231,7 @@ struct NotesView: View {
 
     private var notesList: some View {
         ScrollView {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: 10) {
                 ForEach(filteredNotes) { note in
                     NoteDTORowView(note: note)
                         .contextMenu {
@@ -234,7 +239,7 @@ struct NotesView: View {
                         }
                 }
             }
-            .padding(12)
+            .padding(14)
         }
     }
 
@@ -416,24 +421,24 @@ struct NoteDTORowView: View {
     @State private var showingEditor = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             // 完成状态按钮
             Button {
                 viewModel.toggleStatus(note)
             } label: {
                 Image(systemName: note.status == .completed ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundColor(note.status == .completed ? BuBuColors.mintGreen : BuBuColors.chocolateBrown.opacity(0.4))
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(note.status == .completed ? BuBuColors.mintGreen : BuBuColors.chocolateBrown.opacity(0.35))
             }
             .buttonStyle(.plain)
 
             // 优先级指示器
             Circle()
                 .fill(note.priority.bubuColor)
-                .frame(width: 8, height: 8)
+                .frame(width: 9, height: 9)
 
             // 内容
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(note.title)
                     .font(BuBuFonts.body)
                     .strikethrough(note.status == .completed)
@@ -452,17 +457,17 @@ struct NoteDTORowView: View {
                         ForEach(note.tags.prefix(3), id: \.self) { tag in
                             Text(tag)
                                 .font(BuBuFonts.tiny)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
                                 .background(BuBuColors.skyBlue.opacity(0.15))
                                 .foregroundColor(BuBuColors.skyBlue)
-                                .cornerRadius(6)
+                                .cornerRadius(7)
                         }
                     }
 
                     if note.reminderDate != nil {
                         Image(systemName: "bell.fill")
-                            .font(.system(size: 10))
+                            .font(.system(size: 11))
                             .foregroundColor(BuBuColors.coralPink)
                     }
                 }
@@ -475,15 +480,16 @@ struct NoteDTORowView: View {
                 showingEditor = true
             } label: {
                 Image(systemName: "pencil")
+                    .font(.system(size: 15))
                     .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
             }
             .buttonStyle(.plain)
         }
-        .padding(14)
+        .padding(16)
         .background(
             RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
                 .fill(Color.white)
-                .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 8, x: 0, y: 3)
+                .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 10, x: 0, y: 4)
         )
         .sheet(isPresented: $showingEditor) {
             NoteDTOEditorView(mode: .edit(note)) { updatedNote in
