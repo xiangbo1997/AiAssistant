@@ -1,0 +1,537 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		001 /* BuBuAssistantApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101 /* BuBuAssistantApp.swift */; };
+		002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102 /* AppDelegate.swift */; };
+		003 /* SpriteCharacter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103 /* SpriteCharacter.swift */; };
+		004 /* Note.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104 /* Note.swift */; };
+		005 /* LLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 105 /* LLMProvider.swift */; };
+		006 /* SpriteViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106 /* SpriteViewModel.swift */; };
+		007 /* NotesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 107 /* NotesViewModel.swift */; };
+		008 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 108 /* SettingsViewModel.swift */; };
+		009 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109 /* PersistenceController.swift */; };
+		010 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110 /* KeychainService.swift */; };
+		011 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111 /* NotificationService.swift */; };
+		012 /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112 /* LLMService.swift */; };
+		013 /* SpriteWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 113 /* SpriteWindow.swift */; };
+		014 /* SpriteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 114 /* SpriteView.swift */; };
+		015 /* MainPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 115 /* MainPanelView.swift */; };
+		016 /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116 /* NotesView.swift */; };
+		017 /* NoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117 /* NoteEditorView.swift */; };
+		018 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118 /* SearchView.swift */; };
+		019 /* TranslationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119 /* TranslationView.swift */; };
+		020 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 120 /* SettingsView.swift */; };
+		021 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 201 /* Assets.xcassets */; };
+		022 /* BuBuTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 121 /* BuBuTheme.swift */; };
+		023 /* SelectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 122 /* SelectionService.swift */; };
+		024 /* SearchHistoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 123 /* SearchHistoryService.swift */; };
+		025 /* TranslationHistoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124 /* TranslationHistoryService.swift */; };
+		026 /* HotkeyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125 /* HotkeyService.swift */; };
+		027 /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126 /* LaunchAtLoginService.swift */; };
+		D84526A82EFE393800A47143 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D84526A72EFE393800A47143 /* MarkdownUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		100 /* BuBuAssistant.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BuBuAssistant.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		101 /* BuBuAssistantApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuBuAssistantApp.swift; sourceTree = "<group>"; };
+		102 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		103 /* SpriteCharacter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteCharacter.swift; sourceTree = "<group>"; };
+		104 /* Note.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Note.swift; sourceTree = "<group>"; };
+		105 /* LLMProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProvider.swift; sourceTree = "<group>"; };
+		106 /* SpriteViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteViewModel.swift; sourceTree = "<group>"; };
+		107 /* NotesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesViewModel.swift; sourceTree = "<group>"; };
+		108 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		109 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+		110 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		111 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		112 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
+		113 /* SpriteWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteWindow.swift; sourceTree = "<group>"; };
+		114 /* SpriteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteView.swift; sourceTree = "<group>"; };
+		115 /* MainPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainPanelView.swift; sourceTree = "<group>"; };
+		116 /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
+		117 /* NoteEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEditorView.swift; sourceTree = "<group>"; };
+		118 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		119 /* TranslationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationView.swift; sourceTree = "<group>"; };
+		120 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		121 /* BuBuTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuBuTheme.swift; sourceTree = "<group>"; };
+		122 /* SelectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionService.swift; sourceTree = "<group>"; };
+		123 /* SearchHistoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchHistoryService.swift; sourceTree = "<group>"; };
+		124 /* TranslationHistoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationHistoryService.swift; sourceTree = "<group>"; };
+		125 /* HotkeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyService.swift; sourceTree = "<group>"; };
+		126 /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
+		201 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		202 /* BuBuAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BuBuAssistant.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D84526A82EFE393800A47143 /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		400 = {
+			isa = PBXGroup;
+			children = (
+				401 /* BuBuAssistant */,
+				402 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		401 /* BuBuAssistant */ = {
+			isa = PBXGroup;
+			children = (
+				410 /* App */,
+				411 /* Models */,
+				412 /* ViewModels */,
+				413 /* Services */,
+				414 /* Views */,
+				418 /* Theme */,
+				420 /* Resources */,
+			);
+			path = BuBuAssistant;
+			sourceTree = "<group>";
+		};
+		402 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				100 /* BuBuAssistant.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		410 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				101 /* BuBuAssistantApp.swift */,
+				102 /* AppDelegate.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		411 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				103 /* SpriteCharacter.swift */,
+				104 /* Note.swift */,
+				105 /* LLMProvider.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		412 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				106 /* SpriteViewModel.swift */,
+				107 /* NotesViewModel.swift */,
+				108 /* SettingsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		413 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				109 /* PersistenceController.swift */,
+				110 /* KeychainService.swift */,
+				111 /* NotificationService.swift */,
+				112 /* LLMService.swift */,
+				122 /* SelectionService.swift */,
+				123 /* SearchHistoryService.swift */,
+				124 /* TranslationHistoryService.swift */,
+				125 /* HotkeyService.swift */,
+				126 /* LaunchAtLoginService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		414 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				415 /* Sprite */,
+				416 /* Panel */,
+				417 /* Settings */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		415 /* Sprite */ = {
+			isa = PBXGroup;
+			children = (
+				113 /* SpriteWindow.swift */,
+				114 /* SpriteView.swift */,
+			);
+			path = Sprite;
+			sourceTree = "<group>";
+		};
+		416 /* Panel */ = {
+			isa = PBXGroup;
+			children = (
+				115 /* MainPanelView.swift */,
+				116 /* NotesView.swift */,
+				117 /* NoteEditorView.swift */,
+				118 /* SearchView.swift */,
+				119 /* TranslationView.swift */,
+			);
+			path = Panel;
+			sourceTree = "<group>";
+		};
+		417 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				120 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		418 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				121 /* BuBuTheme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		420 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				201 /* Assets.xcassets */,
+				202 /* BuBuAssistant.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		500 /* BuBuAssistant */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600 /* Build configuration list for PBXNativeTarget "BuBuAssistant" */;
+			buildPhases = (
+				501 /* Sources */,
+				300 /* Frameworks */,
+				502 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BuBuAssistant;
+			productName = BuBuAssistant;
+			productReference = 100 /* BuBuAssistant.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		700 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					500 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 701 /* Build configuration list for PBXProject "BuBuAssistant" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = 400;
+			packageReferences = (
+				D84526A62EFE393800A47143 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+			);
+			productRefGroup = 402 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				500 /* BuBuAssistant */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		502 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				021 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		501 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				022 /* BuBuTheme.swift in Sources */,
+				023 /* SelectionService.swift in Sources */,
+				024 /* SearchHistoryService.swift in Sources */,
+				025 /* TranslationHistoryService.swift in Sources */,
+				026 /* HotkeyService.swift in Sources */,
+				027 /* LaunchAtLoginService.swift in Sources */,
+				001 /* BuBuAssistantApp.swift in Sources */,
+				002 /* AppDelegate.swift in Sources */,
+				003 /* SpriteCharacter.swift in Sources */,
+				004 /* Note.swift in Sources */,
+				005 /* LLMProvider.swift in Sources */,
+				006 /* SpriteViewModel.swift in Sources */,
+				007 /* NotesViewModel.swift in Sources */,
+				008 /* SettingsViewModel.swift in Sources */,
+				009 /* PersistenceController.swift in Sources */,
+				010 /* KeychainService.swift in Sources */,
+				011 /* NotificationService.swift in Sources */,
+				012 /* LLMService.swift in Sources */,
+				013 /* SpriteWindow.swift in Sources */,
+				014 /* SpriteView.swift in Sources */,
+				015 /* MainPanelView.swift in Sources */,
+				016 /* NotesView.swift in Sources */,
+				017 /* NoteEditorView.swift in Sources */,
+				018 /* SearchView.swift in Sources */,
+				019 /* TranslationView.swift in Sources */,
+				020 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		800 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		801 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		802 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BuBuAssistant/Resources/BuBuAssistant.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "布布助手";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 BuBuAssistant. All rights reserved.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bubuassistant.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		803 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BuBuAssistant/Resources/BuBuAssistant.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "布布助手";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 BuBuAssistant. All rights reserved.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bubuassistant.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		600 /* Build configuration list for PBXNativeTarget "BuBuAssistant" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				802 /* Debug */,
+				803 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		701 /* Build configuration list for PBXProject "BuBuAssistant" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				800 /* Debug */,
+				801 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D84526A62EFE393800A47143 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D84526A72EFE393800A47143 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D84526A62EFE393800A47143 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 700 /* Project object */;
+}
