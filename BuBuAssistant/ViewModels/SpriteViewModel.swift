@@ -34,7 +34,7 @@ class SpriteViewModel: ObservableObject {
 
     @Published var isDragOver: Bool = false
     @Published var showActionMenu: Bool = false
-    @Published var droppedText: String = ""
+    var droppedText: String = ""  // 不需要 @Published，不触发视图更新
 
     // MARK: - 睡眠计时
 
@@ -44,6 +44,10 @@ class SpriteViewModel: ObservableObject {
     // MARK: - 订阅
 
     private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - 翻译结果缓存（避免重复翻译相同内容）
+    private var translationCache: [String: String] = [:]
+    private let maxCacheSize = 50
 
     // MARK: - 初始化
 
@@ -238,8 +242,20 @@ class SpriteViewModel: ObservableObject {
         performQuickTranslation(text: text)
     }
 
-    /// 执行快速翻译
+    /// 执行快速翻译（带缓存）
     private func performQuickTranslation(text: String) {
+        // 检查缓存
+        if let cached = translationCache[text] {
+            DispatchQueue.main.async { [weak self] in
+                self?.animationState = .happy
+                self?.showBubble(message: cached, type: .response, duration: 0)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    self?.startIdleAnimation()
+                }
+            }
+            return
+        }
+
         Task {
             do {
                 let config = SettingsViewModel.shared.currentLLMConfig
@@ -259,10 +275,19 @@ class SpriteViewModel: ObservableObject {
                 let targetLang = detectTargetLanguage(text)
                 let result = try await service.translate(text: text, from: "自动检测", to: targetLang)
 
-                await MainActor.run {
+                // 缓存结果
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+
+                    // 限制缓存大小
+                    if self.translationCache.count >= self.maxCacheSize {
+                        self.translationCache.removeAll()
+                    }
+                    self.translationCache[text] = result
+
                     // 显示翻译结果（持久显示，duration: 0 表示不自动消失）
-                    animationState = .happy
-                    showBubble(message: result, type: .response, duration: 0)
+                    self.animationState = .happy
+                    self.showBubble(message: result, type: .response, duration: 0)
 
                     // 保存到翻译历史
                     TranslationHistoryService.shared.addRecord(

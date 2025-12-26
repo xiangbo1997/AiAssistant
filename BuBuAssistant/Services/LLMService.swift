@@ -52,6 +52,18 @@ class LLMServiceFactory {
 class BaseLLMService: LLMService {
     let config: LLMConfig
 
+    // 共享的 URLSession 配置（优化连接复用）
+    private static let sharedSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30  // 请求超时 30 秒
+        configuration.timeoutIntervalForResource = 60 // 资源超时 60 秒
+        configuration.httpMaximumConnectionsPerHost = 4
+        configuration.waitsForConnectivity = true
+        return URLSession(configuration: configuration)
+    }()
+
+    var session: URLSession { Self.sharedSession }
+
     init(config: LLMConfig) {
         self.config = config
     }
@@ -115,7 +127,7 @@ class OpenAIService: BaseLLMService {
         var request = buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.networkError(URLError(.badServerResponse))
@@ -165,7 +177,7 @@ class OpenAIService: BaseLLMService {
                     var request = self.buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
                     request.setValue("Bearer \(self.config.apiKey)", forHTTPHeaderField: "Authorization")
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await self.session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                         continuation.finish(throwing: LLMError.serverError("请求失败"))
@@ -220,7 +232,7 @@ class ClaudeService: BaseLLMService {
         request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.networkError(URLError(.badServerResponse))
@@ -275,7 +287,7 @@ class WenxinService: BaseLLMService {
 
         let request = buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw LLMError.serverError("请求失败")
@@ -359,7 +371,7 @@ class QwenService: BaseLLMService {
         var request = buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw LLMError.serverError("请求失败")
@@ -411,7 +423,7 @@ class DeepSeekService: BaseLLMService {
         var request = buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorMessage = String(data: data, encoding: .utf8) ?? "未知错误"
@@ -462,7 +474,7 @@ class OllamaService: BaseLLMService {
 
         let request = buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw LLMError.serverError("请求失败，请确保 Ollama 正在运行")
@@ -494,7 +506,7 @@ class OllamaService: BaseLLMService {
 
                     let request = self.buildRequest(url: url, body: try JSONSerialization.data(withJSONObject: body))
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await self.session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                         continuation.finish(throwing: LLMError.serverError("请求失败"))

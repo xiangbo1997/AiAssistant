@@ -18,8 +18,12 @@ struct SpriteView: View {
     @State private var scaleEffect: CGFloat = 1.0
     @State private var eyesClosed: Bool = false
 
-    // 动画计时器
+    // 动画计时器（使用弱引用避免内存泄漏）
     @State private var animationTimer: Timer?
+
+    // 缓存图片避免重复加载
+    @State private var cachedSpriteImage: NSImage?
+    @State private var lastCharacterId: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -102,21 +106,34 @@ struct SpriteView: View {
         }
     }
 
-    // MARK: - 精灵图像
+    // MARK: - 精灵图像（带缓存）
 
     @ViewBuilder
     private var spriteImageView: some View {
-        if viewModel.currentCharacter.isCustom,
+        // 使用缓存的图片
+        if let cached = cachedSpriteImage, lastCharacterId == viewModel.currentCharacter.id {
+            Image(nsImage: cached)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else if viewModel.currentCharacter.isCustom,
            let path = viewModel.currentCharacter.customImagePath,
            let nsImage = NSImage(contentsOfFile: path) {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                .onAppear {
+                    cachedSpriteImage = nsImage
+                    lastCharacterId = viewModel.currentCharacter.id
+                }
         } else if let nsImage = NSImage(named: viewModel.currentCharacter.imageName), nsImage.isValid {
             // 使用 Asset Catalog 中的图片
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                .onAppear {
+                    cachedSpriteImage = nsImage
+                    lastCharacterId = viewModel.currentCharacter.id
+                }
         } else {
             // 使用 SF Symbol 作为默认占位图标
             defaultSpriteIcon
