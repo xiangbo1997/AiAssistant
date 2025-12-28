@@ -81,12 +81,14 @@ enum DragAction: String, CaseIterable {
     case search      // 智能搜索
     case translate   // 翻译
     case addNote     // 添加便签
+    case memo        // 备忘
 
     var title: String {
         switch self {
         case .search: return "🔍 智能搜索"
         case .translate: return "🌐 翻译"
         case .addNote: return "📝 添加便签"
+        case .memo: return "🔐 备忘"
         }
     }
 
@@ -95,6 +97,7 @@ enum DragAction: String, CaseIterable {
         case .search: return "magnifyingglass"
         case .translate: return "globe"
         case .addNote: return "note.text.badge.plus"
+        case .memo: return "key.fill"
         }
     }
 }

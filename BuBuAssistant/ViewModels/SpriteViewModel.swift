@@ -339,6 +339,11 @@ class SpriteViewModel: ObservableObject {
                 name: .addNote,
                 object: droppedText
             )
+        case .memo:
+            NotificationCenter.default.post(
+                name: .showMemo,
+                object: droppedText
+            )
         }
 
         droppedText = ""
@@ -389,4 +394,5 @@ extension Notification.Name {
     static let performSearch = Notification.Name("performSearch")
     static let performTranslation = Notification.Name("performTranslation")
     static let addNote = Notification.Name("addNote")
+    static let showMemo = Notification.Name("showMemo")
 }

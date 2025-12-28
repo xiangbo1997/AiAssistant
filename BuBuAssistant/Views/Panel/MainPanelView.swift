@@ -42,7 +42,7 @@ struct MainPanelView: View {
     // MARK: - 标签栏
 
     private var tabBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             TabButton(
                 title: "便签",
                 icon: "note.text",
@@ -66,6 +66,14 @@ struct MainPanelView: View {
             ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .translation }
             }
+
+            TabButton(
+                title: "备忘",
+                icon: "key.fill",
+                isSelected: selectedTab == .memo
+            ) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .memo }
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
@@ -86,6 +94,8 @@ struct MainPanelView: View {
             SearchView()
         case .translation:
             TranslationView()
+        case .memo:
+            MemoView()
         }
     }
 }
@@ -100,15 +110,15 @@ struct TabButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
                 Text(title)
-                    .font(BuBuFonts.headline)
+                    .font(BuBuFonts.caption)
             }
             .foregroundColor(isSelected ? .white : BuBuColors.chocolateBrown.opacity(0.8))
-            .padding(.horizontal, 20)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
                     .fill(isSelected ? BuBuColors.skyBlue : Color.white.opacity(0.6))

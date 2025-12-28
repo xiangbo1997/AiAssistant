@@ -32,10 +32,7 @@ struct SpriteView: View {
                 BubbleView(bubble: bubble, onDismiss: {
                     viewModel.hideBubble()
                 })
-                    .transition(.asymmetric(
-                        insertion: .scale.combined(with: .opacity),
-                        removal: .opacity
-                    ))
+                    .transition(.scale.combined(with: .opacity))
                     .padding(.horizontal, 10)
                     .padding(.top, 10)
             }
@@ -84,10 +81,10 @@ struct SpriteView: View {
     @ViewBuilder
     private var dragHighlight: some View {
         RoundedRectangle(cornerRadius: 20)
-            .stroke(Color.accentColor, lineWidth: 3)
+            .stroke(BuBuColors.skyBlue, lineWidth: 3)
             .opacity(viewModel.isDragOver ? 1 : 0)
             .scaleEffect(viewModel.isDragOver ? 1.1 : 1)
-            .animation(.easeInOut(duration: 0.3), value: viewModel.isDragOver)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.isDragOver)
     }
 
     @ViewBuilder
@@ -176,7 +173,7 @@ struct SpriteView: View {
     }
 
     private func resetAnimationState() {
-        withAnimation(.easeOut(duration: 0.3)) {
+        withAnimation(.easeInOut(duration: 0.3)) {
             floatOffset = 0
             rotationAngle = 0
             scaleEffect = 1.0
@@ -212,7 +209,7 @@ struct SpriteView: View {
         }
 
         // 眨眼效果
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
             withAnimation(.easeInOut(duration: 0.1)) {
                 eyesClosed = true
             }
@@ -237,7 +234,7 @@ struct SpriteView: View {
     /// 说话动画 - 轻微缩放
     private func startTalkingAnimation() {
         withAnimation(
-            .easeInOut(duration: 0.2)
+            .easeInOut(duration: 0.3)
             .repeatForever(autoreverses: true)
         ) {
             scaleEffect = 1.05
@@ -247,7 +244,7 @@ struct SpriteView: View {
     /// 开心动画 - 跳跃
     private func startHappyAnimation() {
         withAnimation(
-            .interpolatingSpring(stiffness: 300, damping: 10)
+            .interpolatingSpring(stiffness: 200, damping: 10)
             .repeatCount(3, autoreverses: true)
         ) {
             floatOffset = -20
@@ -285,7 +282,6 @@ struct BubbleView: View {
             bubbleArrow
         }
         .onTapGesture {
-            // 点击气泡关闭
             onDismiss?()
         }
     }
@@ -368,7 +364,7 @@ struct BubbleView: View {
     private var bubbleBackground: some View {
         RoundedRectangle(cornerRadius: BuBuShapes.bubbleRadius)
             .fill(BuBuColors.bubbleGradient)
-            .shadow(color: BuBuColors.skyBlue.opacity(0.2), radius: 8, x: 0, y: 4)
+            .shadow(color: BuBuColors.skyBlue.opacity(0.15), radius: 6, x: 0, y: 3)
     }
 
     private var bubbleArrow: some View {
@@ -404,9 +400,20 @@ struct ZzzView: View {
 
     var body: some View {
         ZStack {
-            zText("z", size: 10, opacity: opacity1, xOffset: 0, yOffset: offset1)
-            zText("z", size: 14, opacity: opacity2, xOffset: 8, yOffset: offset2 - 10)
-            zText("Z", size: 18, opacity: opacity3, xOffset: 16, yOffset: offset3 - 25)
+            Text("z")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .opacity(opacity1)
+                .offset(y: offset1)
+
+            Text("z")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .opacity(opacity2)
+                .offset(x: 10, y: -15 + offset2)
+
+            Text("Z")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .opacity(opacity3)
+                .offset(x: 22, y: -35 + offset3)
         }
         .foregroundColor(BuBuColors.lavender)
         .onAppear {
@@ -414,27 +421,23 @@ struct ZzzView: View {
         }
     }
 
-    private func zText(_ text: String, size: CGFloat, opacity: Double, xOffset: CGFloat, yOffset: CGFloat) -> some View {
-        Text(text)
-            .font(.system(size: size, weight: .bold))
-            .opacity(opacity)
-            .offset(x: xOffset, y: yOffset)
-    }
-
     private func startAnimation() {
+        // 第一个 z
         withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
             opacity1 = 1
-            offset1 = -5
+            offset1 = -8
         }
 
+        // 第二个 z（延迟）
         withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true).delay(0.3)) {
             opacity2 = 1
-            offset2 = -5
+            offset2 = -8
         }
 
+        // 第三个 Z（更大延迟）
         withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true).delay(0.6)) {
             opacity3 = 1
-            offset3 = -5
+            offset3 = -8
         }
     }
 }
@@ -442,43 +445,50 @@ struct ZzzView: View {
 // MARK: - 思考点动画
 
 struct ThinkingDotsView: View {
-    @State private var dotScale: [CGFloat] = [1, 1, 1]
+    @State private var scale1: CGFloat = 1
+    @State private var scale2: CGFloat = 1
+    @State private var scale3: CGFloat = 1
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { index in
-                dotCircle(at: index)
-            }
+            Circle()
+                .fill(BuBuColors.skyBlue)
+                .frame(width: 8, height: 8)
+                .scaleEffect(scale1)
+
+            Circle()
+                .fill(BuBuColors.skyBlue)
+                .frame(width: 8, height: 8)
+                .scaleEffect(scale2)
+
+            Circle()
+                .fill(BuBuColors.skyBlue)
+                .frame(width: 8, height: 8)
+                .scaleEffect(scale3)
         }
-        .padding(8)
-        .background(dotsBackground)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.white)
+                .shadow(color: BuBuColors.chocolateBrown.opacity(0.1), radius: 4, x: 0, y: 2)
+        )
         .onAppear {
             startAnimation()
         }
     }
 
-    private func dotCircle(at index: Int) -> some View {
-        Circle()
-            .fill(BuBuColors.skyBlue)
-            .frame(width: 6, height: 6)
-            .scaleEffect(dotScale[index])
-    }
-
-    private var dotsBackground: some View {
-        Capsule()
-            .fill(BuBuColors.creamWhite)
-            .shadow(color: BuBuColors.chocolateBrown.opacity(0.1), radius: 4, x: 0, y: 2)
-    }
-
     private func startAnimation() {
-        for i in 0..<3 {
-            withAnimation(
-                .easeInOut(duration: 0.4)
-                .repeatForever(autoreverses: true)
-                .delay(Double(i) * 0.15)
-            ) {
-                dotScale[i] = 1.5
-            }
+        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
+            scale1 = 1.4
+        }
+
+        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true).delay(0.15)) {
+            scale2 = 1.4
+        }
+
+        withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true).delay(0.3)) {
+            scale3 = 1.4
         }
     }
 }

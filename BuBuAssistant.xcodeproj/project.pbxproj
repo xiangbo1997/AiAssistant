@@ -34,6 +34,10 @@
 		025 /* TranslationHistoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124 /* TranslationHistoryService.swift */; };
 		026 /* HotkeyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125 /* HotkeyService.swift */; };
 		027 /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126 /* LaunchAtLoginService.swift */; };
+		028 /* Memo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127 /* Memo.swift */; };
+		029 /* MemoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 128 /* MemoService.swift */; };
+		030 /* MemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129 /* MemoView.swift */; };
+		031 /* MemoEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 130 /* MemoEditorView.swift */; };
 		D84526A82EFE393800A47143 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D84526A72EFE393800A47143 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
@@ -65,6 +69,10 @@
 		124 /* TranslationHistoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationHistoryService.swift; sourceTree = "<group>"; };
 		125 /* HotkeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyService.swift; sourceTree = "<group>"; };
 		126 /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
+		127 /* Memo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Memo.swift; sourceTree = "<group>"; };
+		128 /* MemoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoService.swift; sourceTree = "<group>"; };
+		129 /* MemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoView.swift; sourceTree = "<group>"; };
+		130 /* MemoEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoEditorView.swift; sourceTree = "<group>"; };
 		201 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		202 /* BuBuAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BuBuAssistant.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -126,6 +134,7 @@
 				103 /* SpriteCharacter.swift */,
 				104 /* Note.swift */,
 				105 /* LLMProvider.swift */,
+				127 /* Memo.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -152,6 +161,7 @@
 				124 /* TranslationHistoryService.swift */,
 				125 /* HotkeyService.swift */,
 				126 /* LaunchAtLoginService.swift */,
+				128 /* MemoService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -183,6 +193,8 @@
 				117 /* NoteEditorView.swift */,
 				118 /* SearchView.swift */,
 				119 /* TranslationView.swift */,
+				129 /* MemoView.swift */,
+				130 /* MemoEditorView.swift */,
 			);
 			path = Panel;
 			sourceTree = "<group>";
@@ -291,6 +303,10 @@
 				025 /* TranslationHistoryService.swift in Sources */,
 				026 /* HotkeyService.swift in Sources */,
 				027 /* LaunchAtLoginService.swift in Sources */,
+				028 /* Memo.swift in Sources */,
+				029 /* MemoService.swift in Sources */,
+				030 /* MemoView.swift in Sources */,
+				031 /* MemoEditorView.swift in Sources */,
 				001 /* BuBuAssistantApp.swift in Sources */,
 				002 /* AppDelegate.swift in Sources */,
 				003 /* SpriteCharacter.swift in Sources */,

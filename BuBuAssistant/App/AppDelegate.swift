@@ -148,6 +148,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
+        // 备忘快捷键（默认 Command + Shift + M）
+        if modifiers == [.command, .shift] && keyCode == kVK_ANSI_M {
+            DispatchQueue.main.async { [weak self] in
+                self?.showPanel(type: .memo)
+            }
+            return true
+        }
+
         return false
     }
 
@@ -234,6 +242,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         translateItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(translateItem)
 
+        // 备忘
+        let memoItem = NSMenuItem(title: "🔐 备忘", action: #selector(showMemoPanel), keyEquivalent: "m")
+        memoItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(memoItem)
+
         menu.addItem(NSMenuItem.separator())
 
         // 显示/隐藏精灵
@@ -315,6 +328,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showTranslationPanel() {
         showPanel(type: .translation)
+    }
+
+    @objc private func showMemoPanel() {
+        showPanel(type: .memo)
     }
 
     @objc private func toggleSpriteWindow() {
@@ -418,6 +435,7 @@ enum PanelType {
     case notes
     case search
     case translation
+    case memo
 }
 
 // MARK: - 通知名称

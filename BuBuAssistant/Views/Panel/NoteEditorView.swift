@@ -62,6 +62,7 @@ struct NoteDTOEditorView: View {
                         TextField("便签标题", text: $title)
                             .textFieldStyle(.plain)
                             .font(BuBuFonts.body)
+                            .foregroundColor(BuBuColors.chocolateBrown)
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
@@ -77,6 +78,7 @@ struct NoteDTOEditorView: View {
                             .foregroundColor(BuBuColors.chocolateBrown)
                         TextEditor(text: $content)
                             .font(BuBuFonts.body)
+                            .foregroundColor(BuBuColors.chocolateBrown)
                             .scrollContentBackground(.hidden)
                             .frame(minHeight: 100)
                             .padding(10)
@@ -142,6 +144,7 @@ struct NoteDTOEditorView: View {
                             TextField("添加标签", text: $newTag)
                                 .textFieldStyle(.plain)
                                 .font(BuBuFonts.body)
+                                .foregroundColor(BuBuColors.chocolateBrown)
                                 .padding(10)
                                 .background(
                                     RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)

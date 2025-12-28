@@ -76,6 +76,16 @@ struct TranslationView: View {
                                 .foregroundColor(BuBuColors.skyBlue)
                         }
                         .buttonStyle(.plain)
+
+                        Button {
+                            speakText(sourceText)
+                        } label: {
+                            Image(systemName: "speaker.wave.2")
+                                .font(.system(size: 15))
+                                .foregroundColor(BuBuColors.lavender)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(sourceText.isEmpty)
                     }
                 }
                 .padding(14)
@@ -234,26 +244,30 @@ struct TranslationView: View {
             // 源语言
             Picker("源语言", selection: $sourceLanguage) {
                 ForEach(Language.allCases, id: \.self) { lang in
-                    Text(lang.displayName).tag(lang)
+                    Text(lang.displayName)
+                        .foregroundColor(BuBuColors.chocolateBrown)
+                        .tag(lang)
                 }
             }
             .labelsHidden()
             .frame(width: 130)
-            .tint(BuBuColors.skyBlue)
+            .accentColor(BuBuColors.chocolateBrown)
 
             Image(systemName: "arrow.right")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(BuBuColors.skyBlue.opacity(0.6))
+                .foregroundColor(BuBuColors.skyBlue)
 
             // 目标语言
             Picker("目标语言", selection: $targetLanguage) {
                 ForEach(Language.allCases.filter { $0 != .auto }, id: \.self) { lang in
-                    Text(lang.displayName).tag(lang)
+                    Text(lang.displayName)
+                        .foregroundColor(BuBuColors.chocolateBrown)
+                        .tag(lang)
                 }
             }
             .labelsHidden()
             .frame(width: 130)
-            .tint(BuBuColors.skyBlue)
+            .accentColor(BuBuColors.chocolateBrown)
 
             Spacer()
 

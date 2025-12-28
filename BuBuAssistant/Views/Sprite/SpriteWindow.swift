@@ -208,6 +208,12 @@ struct SpriteContainerView: View {
             Label("翻译", systemImage: "globe")
         }
 
+        Button {
+            onShowPanel?(.memo)
+        } label: {
+            Label("备忘", systemImage: "key.fill")
+        }
+
         Divider()
 
         Menu("切换角色") {
@@ -316,6 +322,8 @@ struct SpriteContainerView: View {
             spriteViewModel.handleDropForTranslation(text: spriteViewModel.droppedText)
         case .addNote:
             onShowPanel?(.notes)
+        case .memo:
+            onShowPanel?(.memo)
         }
     }
 }
