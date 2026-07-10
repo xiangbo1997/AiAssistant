@@ -254,6 +254,9 @@ struct AISettingsView: View {
     @State private var showingAPIKey = false
     @State private var testResult: String?
     @State private var isTesting = false
+    @State private var fetchedModels: [String] = []
+    @State private var isFetchingModels = false
+    @State private var modelFetchError: String?
 
     var body: some View {
         Form {
@@ -265,6 +268,9 @@ struct AISettingsView: View {
                 }
                 .onChange(of: viewModel.currentProvider) { _, _ in
                     loadAPIKey()
+                    // 切换服务商后清空已拉取的模型列表（各家列表不通用）
+                    fetchedModels = []
+                    modelFetchError = nil
                 }
             }
 
@@ -315,9 +321,22 @@ struct AISettingsView: View {
                             }
                         ))
 
-                        // 常用模型下拉：点选填入输入框，中转站的自定义模型名仍可手动输入
+                        // 模型下拉：优先展示从 API 拉取的真实列表，未拉取时用静态预设；
+                        // 中转站的自定义模型名仍可手动输入
                         Menu {
-                            ForEach(viewModel.currentProvider.availableModels, id: \.self) { model in
+                            Button {
+                                Task { await fetchAvailableModels() }
+                            } label: {
+                                Label(
+                                    isFetchingModels ? "正在拉取…" : "🔄 拉取可用模型",
+                                    systemImage: "arrow.clockwise"
+                                )
+                            }
+                            .disabled(isFetchingModels)
+
+                            Divider()
+
+                            ForEach(fetchedModels.isEmpty ? viewModel.currentProvider.availableModels : fetchedModels, id: \.self) { model in
                                 Button {
                                     var updatedConfig = config
                                     updatedConfig.model = model
@@ -332,12 +351,30 @@ struct AISettingsView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 11, weight: .medium))
+                            if isFetchingModels {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
                         }
                         .menuStyle(.borderlessButton)
                         .fixedSize()
-                        .help("选择常用模型")
+                        .help("选择模型（可从 API 拉取真实列表）")
+                    }
+
+                    if !fetchedModels.isEmpty {
+                        Text("已拉取 \(fetchedModels.count) 个可用模型")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    if let fetchError = modelFetchError {
+                        Text(fetchError)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .lineLimit(2)
                     }
 
                     HStack {
@@ -414,6 +451,27 @@ struct AISettingsView: View {
             config.secretKey = viewModel.currentProvider == .wenxin ? secretKey : nil
             viewModel.updateLLMConfig(config)
         }
+    }
+
+    /// 从当前服务的 API 拉取真实可用的模型列表
+    private func fetchAvailableModels() async {
+        guard let config = viewModel.llmConfigs[viewModel.currentProvider] else { return }
+
+        isFetchingModels = true
+        modelFetchError = nil
+
+        do {
+            let service = LLMServiceFactory.create(for: config)
+            let models = try await service.listModels()
+            fetchedModels = models
+            if models.isEmpty {
+                modelFetchError = "该服务未返回任何模型"
+            }
+        } catch {
+            modelFetchError = "拉取失败：\(error.localizedDescription)"
+        }
+
+        isFetchingModels = false
     }
 
     private func testConnection() {

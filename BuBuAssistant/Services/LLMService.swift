@@ -23,6 +23,9 @@ protocol LLMService {
     /// 多轮对话流式回复（消息可携带图片，用于截图指导等场景）
     func sendChatStream(messages: [ChatMessage]) -> AsyncThrowingStream<String, Error>
 
+    /// 拉取该服务实际可用的模型列表
+    func listModels() async throws -> [String]
+
     /// 翻译文本
     func translate(text: String, from: String, to: String) async throws -> String
 
@@ -86,6 +89,35 @@ class BaseLLMService: LLMService {
             return AsyncThrowingStream { $0.finish(throwing: LLMError.visionNotSupported) }
         }
         return sendMessageStream(Self.plainTranscript(from: messages))
+    }
+
+    func listModels() async throws -> [String] {
+        // 默认返回静态预设列表（不支持在线拉取的服务）
+        config.provider.availableModels
+    }
+
+    /// OpenAI 兼容协议的模型列表拉取（GET /models）
+    func fetchOpenAICompatibleModels(endpoint: URL) async throws -> [String] {
+        guard !config.apiKey.isEmpty else {
+            throw LLMError.invalidAPIKey
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "获取模型列表失败"
+            throw LLMError.serverError(errorMessage)
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["data"] as? [[String: Any]] else {
+            throw LLMError.parseError
+        }
+
+        return models.compactMap { $0["id"] as? String }.sorted()
     }
 
     /// 将多轮消息拼接为纯文本对话稿（供不支持多轮接口的服务降级使用）
@@ -270,6 +302,10 @@ class OpenAIService: BaseLLMService {
             messages: messages
         )
     }
+
+    override func listModels() async throws -> [String] {
+        try await fetchOpenAICompatibleModels(endpoint: URL(string: "\(config.baseURL)/models")!)
+    }
 }
 
 // MARK: - Claude 服务
@@ -398,6 +434,30 @@ class ClaudeService: BaseLLMService {
         }
         content.append(["type": "text", "text": message.content])
         return ["role": message.role.rawValue, "content": content]
+    }
+
+    override func listModels() async throws -> [String] {
+        guard !config.apiKey.isEmpty else {
+            throw LLMError.invalidAPIKey
+        }
+
+        var request = URLRequest(url: URL(string: "\(config.baseURL)/models")!)
+        request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorMessage = String(data: data, encoding: .utf8) ?? "获取模型列表失败"
+            throw LLMError.serverError(errorMessage)
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["data"] as? [[String: Any]] else {
+            throw LLMError.parseError
+        }
+
+        return models.compactMap { $0["id"] as? String }.sorted()
     }
 }
 
@@ -533,6 +593,16 @@ class QwenService: BaseLLMService {
     override func sendChatStream(messages: [ChatMessage]) -> AsyncThrowingStream<String, Error> {
         openAICompatibleChatStream(endpoint: compatibleEndpoint, messages: messages)
     }
+
+    override func listModels() async throws -> [String] {
+        let endpoint: URL
+        if config.baseURL.contains("dashscope.aliyuncs.com") {
+            endpoint = URL(string: "https://dashscope.aliyuncs.com/compatible-mode/v1/models")!
+        } else {
+            endpoint = URL(string: "\(config.baseURL)/models")!
+        }
+        return try await fetchOpenAICompatibleModels(endpoint: endpoint)
+    }
 }
 
 // MARK: - DeepSeek 服务
@@ -584,6 +654,10 @@ class DeepSeekService: BaseLLMService {
             endpoint: URL(string: "\(config.baseURL)/chat/completions")!,
             messages: messages
         )
+    }
+
+    override func listModels() async throws -> [String] {
+        try await fetchOpenAICompatibleModels(endpoint: URL(string: "\(config.baseURL)/models")!)
     }
 }
 
@@ -665,6 +739,22 @@ class OllamaService: BaseLLMService {
             // 消费方提前终止时取消网络任务，避免连接被挂到超时
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    override func listModels() async throws -> [String] {
+        // Ollama 用 /api/tags 列出本地已拉取的模型
+        let (data, response) = try await session.data(from: URL(string: "\(config.baseURL)/api/tags")!)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw LLMError.serverError("请求失败，请确保 Ollama 正在运行")
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["models"] as? [[String: Any]] else {
+            throw LLMError.parseError
+        }
+
+        return models.compactMap { $0["name"] as? String }.sorted()
     }
 }
 
