@@ -169,9 +169,21 @@ class GuidanceViewModel: ObservableObject {
 
         let service = LLMServiceFactory.create(for: config)
         do {
+            // 节流刷新：逐 token 更新 @Published 会让整个视图（含 Markdown 全文重解析）
+            // 每秒重渲染几十次，越到后面全文越长开销越大。这里 token 先进缓冲区，
+            // 每 80ms 批量发布一次，肉眼流畅度不变，主线程压力大幅下降
+            var buffer = ""
+            var lastFlush = ContinuousClock.now
             for try await chunk in service.sendChatStream(messages: history) {
-                currentReply += chunk
+                buffer += chunk
+                let now = ContinuousClock.now
+                if now - lastFlush >= .milliseconds(80) {
+                    currentReply += buffer
+                    buffer = ""
+                    lastFlush = now
+                }
             }
+            currentReply += buffer
             let reply = currentReply
             history.append(ChatMessage(role: .assistant, content: reply))
             entries.append(GuidanceEntry(role: .assistant, text: reply, hasScreenshot: false))

@@ -16,10 +16,6 @@ struct SpriteView: View {
     @State private var floatOffset: CGFloat = 0
     @State private var rotationAngle: Double = 0
     @State private var scaleEffect: CGFloat = 1.0
-    @State private var eyesClosed: Bool = false
-
-    // 动画计时器（使用弱引用避免内存泄漏）
-    @State private var animationTimer: Timer?
 
     // 缓存图片避免重复加载
     @State private var cachedSpriteImage: NSImage?
@@ -50,10 +46,14 @@ struct SpriteView: View {
             .frame(height: 150)
         }
         .onAppear {
+            reloadSpriteImage()
             startAnimation()
         }
         .onDisappear {
             stopAnimation()
+        }
+        .onChange(of: viewModel.currentCharacter.id) { _, _ in
+            reloadSpriteImage()
         }
         .onChange(of: viewModel.animationState) { _, newState in
             updateAnimation(for: newState)
@@ -109,22 +109,30 @@ struct SpriteView: View {
 
     @ViewBuilder
     private var spriteImageView: some View {
-        // 自定义角色：从文件路径加载
-        if viewModel.currentCharacter.isCustom,
-           let path = viewModel.currentCharacter.customImagePath,
-           let nsImage = NSImage(contentsOfFile: path) {
+        // 自定义角色：使用缓存图片，磁盘加载只在角色切换时发生（见 reloadSpriteImage）
+        if let nsImage = cachedSpriteImage {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .onAppear {
-                    cachedSpriteImage = nsImage
-                    lastCharacterId = viewModel.currentCharacter.id
-                }
         } else {
             // 预设角色：直接使用 SwiftUI Image 从 Asset Catalog 加载
             Image(viewModel.currentCharacter.imageName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+        }
+    }
+
+    /// 角色切换时重新加载自定义图片；在 body 里直接 NSImage(contentsOfFile:)
+    /// 会导致每次视图刷新都做磁盘 I/O
+    private func reloadSpriteImage() {
+        guard viewModel.currentCharacter.id != lastCharacterId else { return }
+        lastCharacterId = viewModel.currentCharacter.id
+
+        if viewModel.currentCharacter.isCustom,
+           let path = viewModel.currentCharacter.customImagePath {
+            cachedSpriteImage = NSImage(contentsOfFile: path)
+        } else {
+            cachedSpriteImage = nil
         }
     }
 
@@ -158,8 +166,6 @@ struct SpriteView: View {
     }
 
     private func stopAnimation() {
-        animationTimer?.invalidate()
-        animationTimer = nil
         resetAnimationState()
     }
 
@@ -172,8 +178,6 @@ struct SpriteView: View {
     }
 
     private func updateAnimation(for state: SpriteAnimationState) {
-        animationTimer?.invalidate()
-
         switch state {
         case .idle:
             startIdleAnimation()
@@ -197,18 +201,6 @@ struct SpriteView: View {
             .repeatForever(autoreverses: true)
         ) {
             floatOffset = -8
-        }
-
-        // 眨眼效果
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
-            withAnimation(.easeInOut(duration: 0.1)) {
-                eyesClosed = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    eyesClosed = false
-                }
-            }
         }
     }
 

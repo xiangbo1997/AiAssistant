@@ -73,11 +73,12 @@ struct SceneKitView: NSViewRepresentable {
             scene.rootNode.addChildNode(ambientLight)
 
             // 添加主光源
+            // 性能：不开阴影——阴影需要每帧额外渲染 shadow map，而小尺寸精灵
+            // 没有地面等承接面，阴影几乎不可见，纯属 GPU 浪费
             let mainLight = SCNNode()
             mainLight.light = SCNLight()
             mainLight.light?.type = .directional
             mainLight.light?.color = NSColor(white: 0.8, alpha: 1.0)
-            mainLight.light?.castsShadow = true
             mainLight.position = SCNVector3(x: 2, y: 3, z: 2)
             mainLight.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(mainLight)
