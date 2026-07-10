@@ -146,15 +146,11 @@ class SettingsViewModel: ObservableObject {
     }
 
     private func saveLLMConfigs() {
-        // 保存 API Keys 到 Keychain
-        for (provider, config) in llmConfigs {
-            KeychainService.shared.saveAPIKey(config.apiKey, for: provider)
-            if provider == .wenxin, let secretKey = config.secretKey {
-                KeychainService.shared.saveSecretKey(secretKey, for: provider)
-            }
-        }
+        // 性能：这里只持久化非敏感元数据。Keychain 写入是跨进程 IPC（毫秒级），
+        // 且 didSet 会在每次配置变动（如设置页打字、拖滑块）时触发——
+        // API Key 的 Keychain 写入由显式的"保存 API Key"流程负责（见 AISettingsView.saveAPIKey）
 
-        // 保存其他配置到 UserDefaults（不包含敏感信息）
+        // 保存配置到 UserDefaults（不包含敏感信息）
         var metadata: [String: LLMConfigMetadata] = [:]
         for (provider, config) in llmConfigs {
             metadata[provider.rawValue] = LLMConfigMetadata(

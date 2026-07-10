@@ -258,6 +258,14 @@ struct AISettingsView: View {
     @State private var isFetchingModels = false
     @State private var modelFetchError: String?
 
+    // 草稿模式：文本框绑定本地状态，停止输入 0.5s 后才提交到 ViewModel。
+    // 直接绑定 llmConfigs 会导致每个按键都触发持久化（JSON+UserDefaults）
+    // 并让所有观察该单例的视图（含桌面精灵窗口）全量重渲染，造成输入卡顿
+    @State private var baseURLDraft = ""
+    @State private var modelDraft = ""
+    @State private var draftProvider: LLMProviderType = .openai
+    @State private var commitTask: Task<Void, Never>?
+
     var body: some View {
         Form {
             Section("AI 服务提供商") {
@@ -267,6 +275,8 @@ struct AISettingsView: View {
                     }
                 }
                 .onChange(of: viewModel.currentProvider) { _, _ in
+                    commitDrafts()  // 先把上一个服务商的未提交草稿存下
+                    loadDrafts()
                     loadAPIKey()
                     // 切换服务商后清空已拉取的模型列表（各家列表不通用）
                     fetchedModels = []
@@ -302,24 +312,14 @@ struct AISettingsView: View {
 
             Section("模型设置") {
                 if let config = viewModel.llmConfigs[viewModel.currentProvider] {
-                    TextField("Base URL", text: Binding(
-                        get: { config.baseURL },
-                        set: { newValue in
-                            var updatedConfig = config
-                            updatedConfig.baseURL = newValue
-                            viewModel.updateLLMConfig(updatedConfig)
-                        }
-                    ))
+                    TextField("Base URL", text: $baseURLDraft)
+                        .onChange(of: baseURLDraft) { _, _ in scheduleCommit() }
+                        .onSubmit { commitDrafts() }
 
                     HStack(spacing: 6) {
-                        TextField("模型（可选择或手动输入）", text: Binding(
-                            get: { config.model },
-                            set: { newValue in
-                                var updatedConfig = config
-                                updatedConfig.model = newValue
-                                viewModel.updateLLMConfig(updatedConfig)
-                            }
-                        ))
+                        TextField("模型（可选择或手动输入）", text: $modelDraft)
+                            .onChange(of: modelDraft) { _, _ in scheduleCommit() }
+                            .onSubmit { commitDrafts() }
 
                         // 模型下拉：优先展示从 API 拉取的真实列表，未拉取时用静态预设；
                         // 中转站的自定义模型名仍可手动输入
@@ -338,13 +338,12 @@ struct AISettingsView: View {
 
                             ForEach(fetchedModels.isEmpty ? viewModel.currentProvider.availableModels : fetchedModels, id: \.self) { model in
                                 Button {
-                                    var updatedConfig = config
-                                    updatedConfig.model = model
-                                    viewModel.updateLLMConfig(updatedConfig)
+                                    modelDraft = model
+                                    commitDrafts()
                                 } label: {
                                     HStack {
                                         Text(model)
-                                        if model == config.model {
+                                        if model == modelDraft {
                                             Image(systemName: "checkmark")
                                         }
                                     }
@@ -430,13 +429,48 @@ struct AISettingsView: View {
         .formStyle(.grouped)
         .padding()
         .onAppear {
+            loadDrafts()
             loadAPIKey()
+        }
+        .onDisappear {
+            commitDrafts()
         }
     }
 
     private func loadAPIKey() {
         apiKey = KeychainService.shared.getAPIKey(for: viewModel.currentProvider) ?? ""
         secretKey = KeychainService.shared.getSecretKey(for: viewModel.currentProvider) ?? ""
+    }
+
+    // MARK: - 草稿提交
+
+    /// 从当前服务商的配置装载草稿
+    private func loadDrafts() {
+        draftProvider = viewModel.currentProvider
+        let config = viewModel.llmConfigs[draftProvider]
+        baseURLDraft = config?.baseURL ?? ""
+        modelDraft = config?.model ?? ""
+    }
+
+    /// 停止输入 0.5s 后自动提交，避免每个按键都触发持久化与全局重渲染
+    private func scheduleCommit() {
+        commitTask?.cancel()
+        commitTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            commitDrafts()
+        }
+    }
+
+    /// 将草稿写回 ViewModel（无变化时跳过，不触发无谓的保存）
+    private func commitDrafts() {
+        commitTask?.cancel()
+        guard var config = viewModel.llmConfigs[draftProvider] else { return }
+        guard config.baseURL != baseURLDraft || config.model != modelDraft else { return }
+
+        config.baseURL = baseURLDraft
+        config.model = modelDraft
+        viewModel.updateLLMConfig(config)
     }
 
     private func saveAPIKey() {
@@ -455,6 +489,7 @@ struct AISettingsView: View {
 
     /// 从当前服务的 API 拉取真实可用的模型列表
     private func fetchAvailableModels() async {
+        commitDrafts()  // 确保使用输入框中最新的 Base URL
         guard let config = viewModel.llmConfigs[viewModel.currentProvider] else { return }
 
         isFetchingModels = true
@@ -475,6 +510,7 @@ struct AISettingsView: View {
     }
 
     private func testConnection() {
+        commitDrafts()  // 确保使用输入框中最新的 Base URL 与模型
         isTesting = true
         testResult = nil
 
