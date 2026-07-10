@@ -52,12 +52,44 @@ struct SceneKitView: NSViewRepresentable {
         let cameraNode: SCNNode
         var currentAnimation: SpriteAnimationState = .idle
 
+        // 微动作目标节点（仅布布模型存在，占位符模型时为 nil，动画自动跳过）
+        private let modelNode: SCNNode?
+        private let headNode: SCNNode?
+        private let eyesNode: SCNNode?
+        private let tailNode: SCNNode?
+
         init(viewModel: SpriteViewModel) {
             scene = SCNScene()
 
             // 创建角色节点
             characterNode = Coordinator.createCharacterNode(for: viewModel.currentCharacter)
             scene.rootNode.addChildNode(characterNode)
+
+            // 提取微动作子节点（状态动画在外层容器上 removeAllActions，
+            // 挂在子节点上的微动作不受影响）
+            modelNode = characterNode.childNode(withName: "bubu-model", recursively: true)
+            headNode = characterNode.childNode(withName: "bubu-head", recursively: true)
+            eyesNode = characterNode.childNode(withName: "bubu-eyes", recursively: true)
+            tailNode = characterNode.childNode(withName: "bubu-tail", recursively: true)
+
+            // 地面软阴影：静态半透明圆片替代真实阴影贴图（性能考虑不开 shadow map），
+            // 随浮动节奏轻微缩放，制造"离地远近"的错觉
+            let shadowGeometry = SCNCylinder(radius: 0.30, height: 0.005)
+            let shadowMaterial = SCNMaterial()
+            shadowMaterial.diffuse.contents = NSColor(calibratedRed: 0.25, green: 0.18, blue: 0.16, alpha: 0.22)
+            shadowMaterial.lightingModel = .constant
+            shadowGeometry.materials = [shadowMaterial]
+            let shadow = SCNNode(geometry: shadowGeometry)
+            shadow.position = SCNVector3(0, -0.72, 0)
+            shadow.scale = SCNVector3(1.0, 1.0, 0.8)
+            scene.rootNode.addChildNode(shadow)
+
+            // 阴影呼吸：与待机浮动同为 1.5s 半周期，角色升高时阴影缩小变淡
+            let shadowShrink = SCNAction.scale(to: 0.82, duration: 1.5)
+            shadowShrink.timingMode = .easeInEaseOut
+            let shadowGrow = SCNAction.scale(to: 1.0, duration: 1.5)
+            shadowGrow.timingMode = .easeInEaseOut
+            shadow.runAction(.repeatForever(.sequence([shadowShrink, shadowGrow])))
 
             // 创建相机
             cameraNode = SCNNode()
@@ -69,34 +101,167 @@ struct SceneKitView: NSViewRepresentable {
             let ambientLight = SCNNode()
             ambientLight.light = SCNLight()
             ambientLight.light?.type = .ambient
-            ambientLight.light?.color = NSColor(white: 0.6, alpha: 1.0)
+            ambientLight.light?.color = NSColor(red: 0.68, green: 0.65, blue: 0.62, alpha: 1.0)
             scene.rootNode.addChildNode(ambientLight)
 
             // 添加主光源
-            // 性能：不开阴影——阴影需要每帧额外渲染 shadow map，而小尺寸精灵
-            // 没有地面等承接面，阴影几乎不可见，纯属 GPU 浪费
+            // 性能：不开阴影——阴影需要每帧额外渲染 shadow map，地面阴影用
+            // 上面的静态圆片伪造，纯属赚到
             let mainLight = SCNNode()
             mainLight.light = SCNLight()
             mainLight.light?.type = .directional
-            mainLight.light?.color = NSColor(white: 0.8, alpha: 1.0)
+            mainLight.light?.color = NSColor(white: 0.85, alpha: 1.0)
             mainLight.position = SCNVector3(x: 2, y: 3, z: 2)
             mainLight.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(mainLight)
 
-            // 添加补光
+            // 添加补光（暖粉色调，衬托白色身体与粉帽兜；冷蓝补光会让白色显脏）
             let fillLight = SCNNode()
             fillLight.light = SCNLight()
             fillLight.light?.type = .directional
-            fillLight.light?.color = NSColor(red: 0.4, green: 0.6, blue: 0.9, alpha: 0.5)
+            fillLight.light?.color = NSColor(red: 0.95, green: 0.80, blue: 0.78, alpha: 0.5)
             fillLight.position = SCNVector3(x: -2, y: 1, z: 2)
             fillLight.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(fillLight)
 
-            // 设���背景透明
+            // 设置背景透明
             scene.background.contents = NSColor.clear
 
-            // 启动待机动画
+            // 启动待机动画与微动作
             startIdleAnimation()
+            startMicroAnimations()
+        }
+
+        // MARK: - 微动作（眨眼/摇尾/随机小动作）
+
+        /// 启动所有微动作循环。全部挂在子节点上，与外层状态动画共存
+        private func startMicroAnimations() {
+            startBlinking()
+            startTailWag()
+            startRandomGestures()
+        }
+
+        /// 眨眼：随机间隔 2.5~6 秒，偶尔连眨两次更传神
+        private func startBlinking() {
+            guard let eyes = eyesNode else { return }
+
+            let close = SCNAction.customAction(duration: 0.07) { node, elapsed in
+                let progress = elapsed / 0.07
+                node.scale = SCNVector3(1, 1 - 0.88 * progress, 1)
+            }
+            let open = SCNAction.customAction(duration: 0.09) { node, elapsed in
+                let progress = elapsed / 0.09
+                node.scale = SCNVector3(1, 0.12 + 0.88 * progress, 1)
+            }
+            let blinkOnce = SCNAction.sequence([close, open])
+
+            let loop = SCNAction.repeatForever(.sequence([
+                .wait(duration: 4.0, withRange: 3.5),
+                blinkOnce,
+                // 30% 概率补一次连眨
+                .run { node in
+                    if Int.random(in: 0..<10) < 3 {
+                        node.runAction(.sequence([.wait(duration: 0.18), blinkOnce]))
+                    }
+                }
+            ]))
+            eyes.runAction(loop, forKey: "blink")
+        }
+
+        /// 尾巴摇摆：轻幅慢摆，间歇停顿，像随呼吸自然晃动
+        private func startTailWag() {
+            guard let tail = tailNode else { return }
+
+            let wagLeft = SCNAction.rotateBy(x: 0, y: 0, z: 0.22, duration: 0.5)
+            wagLeft.timingMode = .easeInEaseOut
+            let wagRight = SCNAction.rotateBy(x: 0, y: 0, z: -0.44, duration: 0.9)
+            wagRight.timingMode = .easeInEaseOut
+            let wagBack = SCNAction.rotateBy(x: 0, y: 0, z: 0.22, duration: 0.5)
+            wagBack.timingMode = .easeInEaseOut
+
+            let loop = SCNAction.repeatForever(.sequence([
+                wagLeft, wagRight, wagBack,
+                .wait(duration: 2.5, withRange: 2.0)
+            ]))
+            tail.runAction(loop, forKey: "wag")
+        }
+
+        /// 随机小动作：待机时每 7~15 秒做一个（歪头 / 左右张望 / 原地小跳）
+        private func startRandomGestures() {
+            guard let model = modelNode else { return }
+
+            let loop = SCNAction.repeatForever(.sequence([
+                .wait(duration: 10, withRange: 7),
+                .run { [weak self] _ in
+                    self?.performRandomGesture()
+                }
+            ]))
+            model.runAction(loop, forKey: "gestures")
+        }
+
+        private func performRandomGesture() {
+            // 睡眠/思考等状态有自己的身体语言，小动作只在待机与开心时插入
+            guard currentAnimation == .idle || currentAnimation == .happy else { return }
+
+            switch Int.random(in: 0..<3) {
+            case 0: gestureHeadTilt()
+            case 1: gestureLookAround()
+            default: gestureHop()
+            }
+        }
+
+        /// 歪头：侧倾片刻再回正，好奇的样子
+        private func gestureHeadTilt() {
+            guard let head = headNode else { return }
+            let direction: CGFloat = Bool.random() ? 1 : -1
+
+            let tilt = SCNAction.rotateBy(x: 0, y: 0, z: 0.20 * direction, duration: 0.28)
+            tilt.timingMode = .easeOut
+            let back = SCNAction.rotateBy(x: 0, y: 0, z: -0.20 * direction, duration: 0.35)
+            back.timingMode = .easeInEaseOut
+
+            head.runAction(.sequence([tilt, .wait(duration: 0.9), back]))
+        }
+
+        /// 左右张望：先看一侧，再看另一侧，回正
+        private func gestureLookAround() {
+            guard let head = headNode else { return }
+
+            let lookLeft = SCNAction.rotateBy(x: 0, y: 0.38, z: 0, duration: 0.35)
+            lookLeft.timingMode = .easeInEaseOut
+            let lookRight = SCNAction.rotateBy(x: 0, y: -0.76, z: 0, duration: 0.6)
+            lookRight.timingMode = .easeInEaseOut
+            let lookBack = SCNAction.rotateBy(x: 0, y: 0.38, z: 0, duration: 0.35)
+            lookBack.timingMode = .easeInEaseOut
+
+            head.runAction(.sequence([lookLeft, .wait(duration: 0.4), lookRight, .wait(duration: 0.4), lookBack]))
+        }
+
+        /// 原地小跳：起跳时拉伸、落地时压扁，经典的挤压拉伸让跳跃有弹性
+        private func gestureHop() {
+            guard let model = modelNode else { return }
+
+            let jumpUp = SCNAction.moveBy(x: 0, y: 0.14, z: 0, duration: 0.18)
+            jumpUp.timingMode = .easeOut
+            let jumpDown = SCNAction.moveBy(x: 0, y: -0.14, z: 0, duration: 0.16)
+            jumpDown.timingMode = .easeIn
+
+            let stretch = SCNAction.customAction(duration: 0.18) { node, elapsed in
+                let progress = elapsed / 0.18
+                let amount = 0.06 * sin(progress * .pi)
+                node.scale = SCNVector3(1 - amount * 0.7, 1 + amount, 1 - amount * 0.7)
+            }
+            let squash = SCNAction.customAction(duration: 0.2) { node, elapsed in
+                let progress = elapsed / 0.2
+                let amount = 0.08 * sin(progress * .pi)
+                node.scale = SCNVector3(1 + amount, 1 - amount, 1 + amount)
+            }
+
+            model.runAction(.sequence([
+                .group([jumpUp, stretch]),
+                jumpDown,
+                squash
+            ]))
         }
 
         // MARK: - 创建角色节点
@@ -126,14 +291,14 @@ struct SceneKitView: NSViewRepresentable {
 
         // MARK: - 布布恐龙套装 3D 模型
 
-        /// 布布配色（取自 2D 贴纸形象）
+        /// 布布配色（对照 2D 贴纸形象采样：粉恐龙帽兜 + 白身体 + 深棕眼斑/蝴蝶结）
         private enum BubuPalette {
-            static let bodyBrown = NSColor(red: 0.80, green: 0.56, blue: 0.38, alpha: 1.0)   // 身体棕
-            static let hoodBlue = NSColor(red: 0.56, green: 0.80, blue: 0.91, alpha: 1.0)    // 恐龙帽兜蓝
-            static let bellyCream = NSColor(red: 0.96, green: 0.88, blue: 0.74, alpha: 1.0)  // 肚皮奶油色
-            static let spikeWhite = NSColor(red: 0.97, green: 0.97, blue: 0.95, alpha: 1.0)  // 棘刺白
-            static let blushPink = NSColor(red: 0.98, green: 0.63, blue: 0.63, alpha: 1.0)   // 腮红粉
-            static let eyeBrown = NSColor(red: 0.24, green: 0.16, blue: 0.12, alpha: 1.0)    // 眼睛深棕
+            static let bodyWhite = NSColor(red: 0.99, green: 0.97, blue: 0.95, alpha: 1.0)   // 身体奶白
+            static let hoodPink = NSColor(red: 0.96, green: 0.72, blue: 0.76, alpha: 1.0)    // 恐龙帽兜粉
+            static let spikeWhite = NSColor(red: 0.99, green: 0.99, blue: 0.97, alpha: 1.0)  // 棘刺白
+            static let blushPink = NSColor(red: 0.98, green: 0.62, blue: 0.62, alpha: 1.0)   // 腮红粉
+            static let patchBrown = NSColor(red: 0.33, green: 0.23, blue: 0.19, alpha: 1.0)  // 眼斑/蝴蝶结深棕
+            static let eyeBrown = NSColor(red: 0.20, green: 0.13, blue: 0.10, alpha: 1.0)    // 眼睛深棕
         }
 
         /// 柔和哑光材质（低高光，贴合绘本质感）
@@ -152,38 +317,68 @@ struct SceneKitView: NSViewRepresentable {
             return SCNNode(geometry: geometry)
         }
 
-        /// 构建穿蓝色恐龙套装的布布：棕色身体 + 蓝帽兜白棘刺 + 奶油肚皮 + 大眼腮红 + 尾巴
+        /// 构建穿粉色恐龙套装的布布：白色连体衣 + 粉帽兜白棘刺 + 单眼深棕眼斑 +
+        /// 胸前蝴蝶结 + 粉爪粉尾巴。
+        /// 节点分层专为动画设计：外层容器承接状态动画（浮动/跳跃等），
+        /// 内层 bubu-model / bubu-head / bubu-eyes / bubu-tail 承接微动作，互不干扰
         static func createBubuDinoNode() -> SCNNode {
             let containerNode = SCNNode()
 
-            // 身体 - 圆润棕色椭球
-            let body = sphereNode(radius: 0.30, color: BubuPalette.bodyBrown, segments: 48)
+            // 内层模型根节点（小跳等全身微动作挂在这里，不与外层状态动画冲突）
+            let model = SCNNode()
+            model.name = "bubu-model"
+            containerNode.addChildNode(model)
+
+            // 身体 - 圆润白色连体衣
+            let body = sphereNode(radius: 0.30, color: BubuPalette.bodyWhite, segments: 48)
             body.position = SCNVector3(0, -0.25, 0)
             body.scale = SCNVector3(1.0, 0.95, 0.9)
-            containerNode.addChildNode(body)
+            model.addChildNode(body)
 
-            // 肚皮 - 奶油色贴片
-            let belly = sphereNode(radius: 0.22, color: BubuPalette.bellyCream)
-            belly.position = SCNVector3(0, -0.24, 0.14)
-            belly.scale = SCNVector3(0.85, 0.80, 0.45)
-            containerNode.addChildNode(belly)
+            // 胸前蝴蝶结 - 深棕两翼 + 中心结
+            let bow = SCNNode()
+            bow.position = SCNVector3(0, -0.10, 0.25)
+            for side in [Float(-1), Float(1)] {
+                let wingGeometry = SCNCone(topRadius: 0, bottomRadius: 0.042, height: 0.09)
+                wingGeometry.materials = [matteMaterial(BubuPalette.patchBrown)]
+                let wing = SCNNode(geometry: wingGeometry)
+                wing.position = SCNVector3(CGFloat(side) * 0.055, 0, 0)
+                wing.eulerAngles = SCNVector3(0, 0, side * Float.pi / 2)
+                bow.addChildNode(wing)
+            }
+            let knot = sphereNode(radius: 0.026, color: BubuPalette.patchBrown, segments: 16)
+            bow.addChildNode(knot)
+            model.addChildNode(bow)
 
-            // 恐龙帽兜 - 蓝色大球包裹头部
-            let hood = sphereNode(radius: 0.40, color: BubuPalette.hoodBlue, segments: 48)
-            hood.position = SCNVector3(0, 0.28, -0.02)
-            containerNode.addChildNode(hood)
+            // 头部组（歪头/张望动画的旋转轴心在这里）
+            let head = SCNNode()
+            head.name = "bubu-head"
+            head.position = SCNVector3(0, 0.26, 0.02)
+            model.addChildNode(head)
 
-            // 脸部 - 棕色球从帽兜前方露出
-            let face = sphereNode(radius: 0.33, color: BubuPalette.bodyBrown, segments: 48)
-            face.position = SCNVector3(0, 0.24, 0.12)
-            face.scale = SCNVector3(1.0, 0.92, 0.78)
-            containerNode.addChildNode(face)
+            // 恐龙帽兜 - 粉色大球包裹头部（前后略压扁，让白脸从兜口探出）
+            let hood = sphereNode(radius: 0.40, color: BubuPalette.hoodPink, segments: 48)
+            hood.position = SCNVector3(0, 0.02, -0.04)
+            hood.scale = SCNVector3(1.0, 1.0, 0.92)
+            head.addChildNode(hood)
+
+            // 脸部 - 白色球明显探出帽兜前方，粉色兜边框住白脸
+            let face = sphereNode(radius: 0.33, color: BubuPalette.bodyWhite, segments: 48)
+            face.position = SCNVector3(0, -0.02, 0.15)
+            face.scale = SCNVector3(1.0, 0.92, 0.85)
+            head.addChildNode(face)
+
+            // 右眼眼斑 - 深棕椭圆贴片（布布的标志特征），微微凸出脸面
+            let patch = sphereNode(radius: 0.095, color: BubuPalette.patchBrown, segments: 24)
+            patch.position = SCNVector3(0.12, 0.05, 0.39)
+            patch.scale = SCNVector3(1.1, 1.3, 0.3)
+            head.addChildNode(patch)
 
             // 帽兜棘刺 - 三枚白色小角沿头顶向后排列
             let spikeConfigs: [(position: SCNVector3, tiltX: Float, size: CGFloat)] = [
-                (SCNVector3(0, 0.68, 0.04), -0.15, 0.065),
-                (SCNVector3(0, 0.62, -0.18), -0.65, 0.058),
-                (SCNVector3(0, 0.48, -0.33), -1.10, 0.050)
+                (SCNVector3(0, 0.44, 0.02), -0.15, 0.075),
+                (SCNVector3(0, 0.37, -0.20), -0.65, 0.062),
+                (SCNVector3(0, 0.23, -0.34), -1.10, 0.052)
             ]
             for config in spikeConfigs {
                 let spikeGeometry = SCNCone(topRadius: 0, bottomRadius: config.size, height: config.size * 2.2)
@@ -191,14 +386,19 @@ struct SceneKitView: NSViewRepresentable {
                 let spike = SCNNode(geometry: spikeGeometry)
                 spike.position = config.position
                 spike.eulerAngles = SCNVector3(config.tiltX, 0, 0)
-                containerNode.addChildNode(spike)
+                head.addChildNode(spike)
             }
 
-            // 眼睛 - 大而圆的深棕眼珠 + 高光
+            // 眼睛组（眨眼动画对该组做 Y 轴压扁）
+            let eyes = SCNNode()
+            eyes.name = "bubu-eyes"
+            eyes.position = SCNVector3(0, 0.04, 0.42)
+            head.addChildNode(eyes)
+
             for xOffset in [CGFloat(-0.11), CGFloat(0.11)] {
                 let eye = sphereNode(radius: 0.048, color: BubuPalette.eyeBrown, segments: 24)
-                eye.position = SCNVector3(xOffset, 0.30, 0.36)
-                containerNode.addChildNode(eye)
+                eye.position = SCNVector3(xOffset, 0, 0)
+                eyes.addChildNode(eye)
 
                 let highlightGeometry = SCNSphere(radius: 0.016)
                 let highlightMaterial = SCNMaterial()
@@ -206,50 +406,55 @@ struct SceneKitView: NSViewRepresentable {
                 highlightMaterial.emission.contents = NSColor.white
                 highlightGeometry.materials = [highlightMaterial]
                 let highlight = SCNNode(geometry: highlightGeometry)
-                highlight.position = SCNVector3(xOffset + 0.015, 0.315, 0.40)
-                containerNode.addChildNode(highlight)
+                highlight.position = SCNVector3(xOffset + 0.015, 0.015, 0.04)
+                eyes.addChildNode(highlight)
             }
 
             // 腮红 - 半透明粉色圆片
-            for xOffset in [CGFloat(-0.20), CGFloat(0.20)] {
+            for xOffset in [CGFloat(-0.21), CGFloat(0.21)] {
                 let blush = sphereNode(radius: 0.055, color: BubuPalette.blushPink, segments: 24)
                 blush.geometry?.firstMaterial?.transparency = 0.65
-                blush.position = SCNVector3(xOffset, 0.21, 0.30)
+                blush.position = SCNVector3(xOffset, -0.06, 0.37)
                 blush.scale = SCNVector3(1.0, 0.6, 0.35)
-                containerNode.addChildNode(blush)
+                head.addChildNode(blush)
             }
 
             // 嘴巴 - 小巧的深色微笑点
             let mouth = sphereNode(radius: 0.022, color: BubuPalette.eyeBrown, segments: 16)
-            mouth.position = SCNVector3(0, 0.17, 0.38)
+            mouth.position = SCNVector3(0, -0.09, 0.43)
             mouth.scale = SCNVector3(1.5, 0.7, 0.5)
-            containerNode.addChildNode(mouth)
+            head.addChildNode(mouth)
 
-            // 手臂 - 棕色小胶囊，微微外张
+            // 手臂 - 白色小胶囊 + 粉色爪垫（套装袖口）
             for (xOffset, zRotation) in [(CGFloat(-0.29), Float(0.5)), (CGFloat(0.29), Float(-0.5))] {
                 let armGeometry = SCNCapsule(capRadius: 0.06, height: 0.20)
-                armGeometry.materials = [matteMaterial(BubuPalette.bodyBrown)]
+                armGeometry.materials = [matteMaterial(BubuPalette.bodyWhite)]
                 let arm = SCNNode(geometry: armGeometry)
                 arm.position = SCNVector3(xOffset, -0.16, 0.04)
                 arm.eulerAngles = SCNVector3(0, 0, zRotation)
-                containerNode.addChildNode(arm)
+                model.addChildNode(arm)
+
+                let paw = sphereNode(radius: 0.052, color: BubuPalette.hoodPink, segments: 20)
+                paw.position = SCNVector3(xOffset > 0 ? xOffset + 0.055 : xOffset - 0.055, -0.245, 0.05)
+                model.addChildNode(paw)
             }
 
-            // 脚 - 蓝色套装小脚
+            // 脚 - 白色套装小脚
             for xOffset in [CGFloat(-0.13), CGFloat(0.13)] {
-                let foot = sphereNode(radius: 0.09, color: BubuPalette.hoodBlue, segments: 24)
+                let foot = sphereNode(radius: 0.09, color: BubuPalette.bodyWhite, segments: 24)
                 foot.position = SCNVector3(xOffset, -0.55, 0.04)
                 foot.scale = SCNVector3(1.0, 0.55, 1.25)
-                containerNode.addChildNode(foot)
+                model.addChildNode(foot)
             }
 
-            // 尾巴 - 蓝色小锥体从身后翘起
+            // 尾巴 - 粉色小锥体从身后翘起（待机时轻轻摇摆）
             let tailGeometry = SCNCone(topRadius: 0, bottomRadius: 0.09, height: 0.26)
-            tailGeometry.materials = [matteMaterial(BubuPalette.hoodBlue)]
+            tailGeometry.materials = [matteMaterial(BubuPalette.hoodPink)]
             let tail = SCNNode(geometry: tailGeometry)
+            tail.name = "bubu-tail"
             tail.position = SCNVector3(0, -0.40, -0.28)
             tail.eulerAngles = SCNVector3(-2.2, 0, 0)
-            containerNode.addChildNode(tail)
+            model.addChildNode(tail)
 
             return containerNode
         }
