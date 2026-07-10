@@ -38,6 +38,9 @@ struct NotesView: View {
             // 工具栏
             toolbar
 
+            // 筛选 chips（可见的过滤状态，替代原先藏在菜单里的筛选）
+            filterBar
+
             Divider()
 
             // 便签内容区域
@@ -88,29 +91,16 @@ struct NotesView: View {
                     .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 8, x: 0, y: 3)
             )
 
-            // 筛选菜单
+            // 更多菜单（视图模式 / 导入导出收拢到一处，替代原先三个含义模糊的图标）
             Menu {
-                ForEach(NoteListFilter.allCases, id: \.self) { filter in
-                    Button {
-                        selectedFilter = filter
-                    } label: {
-                        HStack {
-                            Text(filter.title)
-                            if selectedFilter == filter {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+                Picker("视图模式", selection: $currentViewMode) {
+                    ForEach(NoteViewMode.allCases, id: \.self) { mode in
+                        Label(mode.rawValue, systemImage: mode.icon).tag(mode)
                     }
                 }
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundColor(BuBuColors.skyBlue)
-            }
-            .menuStyle(.borderlessButton)
 
-            // 更多操作菜单（导入/导出）
-            Menu {
+                Divider()
+
                 Button {
                     exportNotes()
                 } label: {
@@ -123,46 +113,43 @@ struct NotesView: View {
                     Label("导入便签", systemImage: "square.and.arrow.down")
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundColor(BuBuColors.lavender)
-            }
-            .menuStyle(.borderlessButton)
-
-            // 视图模式切换
-            Menu {
-                ForEach(NoteViewMode.allCases, id: \.self) { mode in
-                    Button {
-                        currentViewMode = mode
-                    } label: {
-                        HStack {
-                            Image(systemName: mode.icon)
-                            Text(mode.rawValue)
-                            if currentViewMode == mode {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
+                HStack(spacing: 4) {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("更多")
+                        .font(BuBuFonts.caption)
                 }
-            } label: {
-                Image(systemName: currentViewMode.icon)
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundColor(BuBuColors.mintGreen)
+                .foregroundColor(BuBuColors.chocolateBrown.opacity(0.65))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                        .fill(Color.white)
+                        .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 6, x: 0, y: 3)
+                )
             }
             .menuStyle(.borderlessButton)
+            .fixedSize()
 
             // 添加按钮
             Button {
                 showingAddNote = true
             } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(BuBuColors.skyBlue)
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle()
+                            .fill(BuBuColors.skyBlue)
+                            .shadow(color: BuBuColors.skyBlue.opacity(0.35), radius: 8, x: 0, y: 4)
+                    )
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
         .background(BuBuColors.creamWhite)
         .sheet(isPresented: $showingAddNote) {
             NoteDTOEditorView(mode: .add) { note in
@@ -180,6 +167,66 @@ struct NotesView: View {
             Button("确定", role: .cancel) {}
         } message: {
             Text(importResult?.summary ?? "")
+        }
+    }
+
+    // MARK: - 筛选 chips
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            ForEach(NoteListFilter.allCases, id: \.self) { filter in
+                let isSelected = selectedFilter == filter
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedFilter = filter
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(filter.title)
+
+                        Text("\(filterCount(for: filter))")
+                            .font(BuBuFonts.tiny)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(
+                                Capsule()
+                                    .fill(isSelected ? Color.white.opacity(0.25) : BuBuColors.chocolateBrown.opacity(0.08))
+                            )
+                    }
+                    .font(BuBuFonts.caption)
+                    .foregroundColor(isSelected ? .white : BuBuColors.chocolateBrown.opacity(0.7))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? BuBuColors.skyBlue : Color.white.opacity(0.6))
+                            .shadow(
+                                color: isSelected ? BuBuColors.skyBlue.opacity(0.3) : .clear,
+                                radius: 6, x: 0, y: 3
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+        .background(BuBuColors.creamWhite)
+    }
+
+    private func filterCount(for filter: NoteListFilter) -> Int {
+        switch filter {
+        case .all:
+            return viewModel.notes.count
+        case .active:
+            return viewModel.notes.filter { $0.status != .completed }.count
+        case .completed:
+            return viewModel.notes.filter { $0.status == .completed }.count
+        case .highPriority:
+            return viewModel.notes.filter { $0.priority == .high || $0.priority == .urgent }.count
         }
     }
 
@@ -419,9 +466,18 @@ struct NoteDTORowView: View {
     let note: NoteDTO
     @EnvironmentObject var viewModel: NotesViewModel
     @State private var showingEditor = false
+    @State private var isHovered = false
+
+    /// 相对时间格式化器（如「2小时前」「昨天」）
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.unitsStyle = .short
+        return formatter
+    }()
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             // 完成状态按钮
             Button {
                 viewModel.toggleStatus(note)
@@ -432,38 +488,50 @@ struct NoteDTORowView: View {
             }
             .buttonStyle(.plain)
 
-            // 优先级指示器
-            Circle()
-                .fill(note.priority.bubuColor)
-                .frame(width: 9, height: 9)
-
             // 内容
             VStack(alignment: .leading, spacing: 5) {
-                Text(note.title)
-                    .font(BuBuFonts.body)
-                    .strikethrough(note.status == .completed)
-                    .foregroundColor(note.status == .completed ? BuBuColors.chocolateBrown.opacity(0.5) : BuBuColors.chocolateBrown)
+                HStack(spacing: 8) {
+                    Text(note.title)
+                        .font(BuBuFonts.body)
+                        .fontWeight(.semibold)
+                        .strikethrough(note.status == .completed)
+                        .foregroundColor(note.status == .completed ? BuBuColors.chocolateBrown.opacity(0.5) : BuBuColors.chocolateBrown)
+                        .lineLimit(1)
 
-                if !note.content.isEmpty {
+                    // 紧急角标
+                    if note.priority == .urgent && note.status != .completed {
+                        Text("紧急")
+                            .font(BuBuFonts.tiny)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(BuBuColors.coralPink))
+                    }
+                }
+
+                // 内容与标题相同时不重复显示
+                if !note.content.isEmpty && note.content != note.title {
                     Text(note.content)
                         .font(BuBuFonts.caption)
                         .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
 
-                // 标签和提醒
+                // 标签、相对时间和提醒
                 HStack(spacing: 8) {
-                    if !note.tags.isEmpty {
-                        ForEach(note.tags.prefix(3), id: \.self) { tag in
-                            Text(tag)
-                                .font(BuBuFonts.tiny)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(BuBuColors.skyBlue.opacity(0.15))
-                                .foregroundColor(BuBuColors.skyBlue)
-                                .cornerRadius(7)
-                        }
+                    ForEach(note.tags.prefix(3), id: \.self) { tag in
+                        Text(tag)
+                            .font(BuBuFonts.tiny)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(BuBuColors.skyBlue.opacity(0.15))
+                            .foregroundColor(BuBuColors.skyBlue)
+                            .cornerRadius(7)
                     }
+
+                    Text(Self.relativeFormatter.localizedString(for: note.updatedAt, relativeTo: Date()))
+                        .font(BuBuFonts.tiny)
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
 
                     if note.reminderDate != nil {
                         Image(systemName: "bell.fill")
@@ -475,7 +543,7 @@ struct NoteDTORowView: View {
 
             Spacer()
 
-            // 编辑按钮
+            // 编辑按钮（悬停时显现，占位不跳动）
             Button {
                 showingEditor = true
             } label: {
@@ -484,13 +552,30 @@ struct NoteDTORowView: View {
                     .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
             }
             .buttonStyle(.plain)
+            .opacity(isHovered ? 1 : 0)
         }
-        .padding(16)
+        .padding(.vertical, 14)
+        .padding(.leading, 20)
+        .padding(.trailing, 16)
         .background(
             RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
                 .fill(Color.white)
                 .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 10, x: 0, y: 4)
         )
+        // 左侧优先级色条
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(note.priority.bubuColor)
+                .frame(width: 4)
+                .padding(.vertical, 12)
+                .padding(.leading, 7)
+        }
+        .opacity(note.status == .completed ? 0.65 : 1)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
         .sheet(isPresented: $showingEditor) {
             NoteDTOEditorView(mode: .edit(note)) { updatedNote in
                 viewModel.updateNote(updatedNote)
