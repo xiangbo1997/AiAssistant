@@ -133,11 +133,11 @@ struct CharacterSettingsView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 24))
                             )
-                            .foregroundColor(.secondary)
+                            .foregroundColor(BuBuColors.chocolateBrown.opacity(0.45))
 
                         Text("添加")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
                     }
                 }
                 .buttonStyle(.plain)
@@ -234,11 +234,11 @@ struct CharacterCard: View {
             .padding(8)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .fill(isSelected ? BuBuColors.skyBlue.opacity(0.18) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? BuBuColors.skyBlue : Color.clear, lineWidth: 2)
             )
         }
         .buttonStyle(.plain)
@@ -366,13 +366,13 @@ struct AISettingsView: View {
                     if !fetchedModels.isEmpty {
                         Text("已拉取 \(fetchedModels.count) 个可用模型")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
                     }
 
                     if let fetchError = modelFetchError {
                         Text(fetchError)
                             .font(.caption)
-                            .foregroundColor(.red)
+                            .foregroundColor(BuBuColors.coralPink)
                             .lineLimit(2)
                     }
 

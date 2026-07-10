@@ -16,6 +16,7 @@ struct SearchView: View {
     @State private var searchResults: [SearchResult] = []
     @State private var isSearching = false
     @State private var errorMessage: String?
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,19 +25,24 @@ struct SearchView: View {
 
             Divider()
 
-            // 内容区域
-            if isSearching {
+            // 内容区域（流式期间结果卡片边生成边显示，仅首 chunk 前显示加载）
+            if isSearching && searchResults.isEmpty {
                 loadingView
             } else if let error = errorMessage {
                 errorView(error)
-            } else if searchResults.isEmpty {
-                if searchQuery.isEmpty {
-                    historyView
-                } else {
-                    emptyResultView
-                }
-            } else {
+            } else if !searchResults.isEmpty {
                 resultsView
+            } else if searchQuery.isEmpty {
+                historyView
+            } else {
+                emptyResultView
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .performSearch)) { notification in
+            // 拖拽文字到布布选「智能搜索」时由此触发
+            if let query = notification.object as? String, !query.isEmpty {
+                searchQuery = query
+                performSearch()
             }
         }
     }
@@ -60,8 +66,10 @@ struct SearchView: View {
 
                 if !searchQuery.isEmpty {
                     Button {
+                        cancelSearch()
                         searchQuery = ""
                         searchResults = []
+                        errorMessage = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 16))
@@ -79,12 +87,16 @@ struct SearchView: View {
             )
 
             Button {
-                performSearch()
+                if isSearching {
+                    cancelSearch()
+                } else {
+                    performSearch()
+                }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkle.magnifyingglass")
+                    Image(systemName: isSearching ? "stop.fill" : "sparkle.magnifyingglass")
                         .font(.system(size: 14, weight: .medium))
-                    Text("搜索")
+                    Text(isSearching ? "停止" : "搜索")
                         .font(BuBuFonts.headline)
                 }
                 .foregroundColor(.white)
@@ -92,13 +104,16 @@ struct SearchView: View {
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
-                        .fill(BuBuColors.skyBlue)
-                        .shadow(color: BuBuColors.skyBlue.opacity(0.35), radius: 10, x: 0, y: 5)
+                        .fill(isSearching ? BuBuColors.coralPink : BuBuColors.skyBlue)
+                        .shadow(
+                            color: (isSearching ? BuBuColors.coralPink : BuBuColors.skyBlue).opacity(0.35),
+                            radius: 10, x: 0, y: 5
+                        )
                 )
             }
             .buttonStyle(.plain)
-            .disabled(searchQuery.isEmpty || isSearching)
-            .opacity(searchQuery.isEmpty || isSearching ? 0.6 : 1)
+            .disabled(searchQuery.isEmpty && !isSearching)
+            .opacity(searchQuery.isEmpty && !isSearching ? 0.6 : 1)
         }
         .padding(18)
         .background(BuBuColors.creamWhite)
@@ -191,7 +206,35 @@ struct SearchView: View {
                     .foregroundColor(BuBuColors.skyBlue)
                 }
 
-                ForEach(historyService.searchHistory.prefix(10)) { record in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        historyRows
+                    }
+                }
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "sparkle.magnifyingglass")
+                        .font(.system(size: 48))
+                        .foregroundColor(BuBuColors.skyBlue.opacity(0.6))
+
+                    Text("智能搜索")
+                        .font(BuBuFonts.title)
+                        .foregroundColor(BuBuColors.chocolateBrown)
+
+                    Text("输入问题或关键词，AI 将为你提供智能答案")
+                        .font(BuBuFonts.body)
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var historyRows: some View {
+        ForEach(historyService.searchHistory.prefix(10)) { record in
                     Button {
                         searchQuery = record.query
                         // 显示之前的结果
@@ -242,27 +285,7 @@ struct SearchView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                }
-            } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "sparkle.magnifyingglass")
-                        .font(.system(size: 48))
-                        .foregroundColor(BuBuColors.skyBlue.opacity(0.6))
-
-                    Text("智能搜索")
-                        .font(BuBuFonts.title)
-                        .foregroundColor(BuBuColors.chocolateBrown)
-
-                    Text("输入问题或关键词，AI 将为你提供智能答案")
-                        .font(BuBuFonts.body)
-                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - 结果视图
@@ -281,56 +304,92 @@ struct SearchView: View {
     // MARK: - 方法
 
     private func performSearch() {
-        guard !searchQuery.isEmpty else { return }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
 
+        searchTask?.cancel()
         isSearching = true
         errorMessage = nil
         searchResults = []
 
-        // 调用 LLM 服务进行智能搜索
-        Task {
-            do {
-                // 获取 LLM 配置并创建服务
-                let config = settingsViewModel.currentLLMConfig
+        // 流式搜索：回答边生成边显示
+        searchTask = Task {
+            let config = settingsViewModel.currentLLMConfig
 
-                // 检查 API Key 是否配置
-                if config.apiKey.isEmpty {
-                    await MainActor.run {
-                        errorMessage = "请先在设置中配置 AI 服务的 API Key"
-                        isSearching = false
-                    }
-                    return
+            // Ollama 走本地服务，不需要 API Key
+            guard !config.apiKey.isEmpty || config.provider == .ollama else {
+                await MainActor.run {
+                    errorMessage = "请先在设置中配置 AI 服务的 API Key"
+                    isSearching = false
+                }
+                return
+            }
+
+            let service = LLMServiceFactory.create(for: config)
+            let messages = [
+                ChatMessage(role: .system, content: "你是智能搜索助手。用简洁准确的中文回答用户的问题，使用 Markdown 组织内容，要点用列表呈现。"),
+                ChatMessage(role: .user, content: query)
+            ]
+
+            do {
+                await MainActor.run {
+                    searchResults = [SearchResult(title: query, summary: "", source: config.provider.displayName)]
                 }
 
-                let service = LLMServiceFactory.create(for: config)
-                let response = try await service.search(query: searchQuery)
+                // 节流刷新：chunk 先进缓冲，每 80ms 批量发布一次，
+                // 避免 Markdown 全文高频重排
+                var buffer = ""
+                var lastFlush = ContinuousClock.now
+                for try await chunk in service.sendChatStream(messages: messages) {
+                    try Task.checkCancellation()
+                    buffer += chunk
+                    let now = ContinuousClock.now
+                    if now - lastFlush >= .milliseconds(80) {
+                        let flush = buffer
+                        buffer = ""
+                        lastFlush = now
+                        await MainActor.run {
+                            guard !searchResults.isEmpty else { return }
+                            searchResults[0].summary += flush
+                        }
+                    }
+                }
+                try Task.checkCancellation()
 
+                let finalFlush = buffer
                 await MainActor.run {
-                    // 解析 AI 回答为搜索结果
-                    searchResults = [
-                        SearchResult(
-                            title: searchQuery,
-                            summary: response,
-                            source: config.provider.displayName
-                        )
-                    ]
+                    if !finalFlush.isEmpty, !searchResults.isEmpty {
+                        searchResults[0].summary += finalFlush
+                    }
                     isSearching = false
 
                     // 保存到搜索历史
-                    historyService.addRecord(
-                        query: searchQuery,
-                        type: .general,
-                        result: response,
-                        provider: config.provider.displayName
-                    )
+                    if let summary = searchResults.first?.summary, !summary.isEmpty {
+                        historyService.addRecord(
+                            query: query,
+                            type: .general,
+                            result: summary,
+                            provider: config.provider.displayName
+                        )
+                    }
                 }
+            } catch is CancellationError {
+                // 被停止按钮或新搜索取消，静默结束
             } catch {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     errorMessage = "搜索失败：\(error.localizedDescription)"
                     isSearching = false
+                    searchResults = []
                 }
             }
         }
+    }
+
+    private func cancelSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        isSearching = false
     }
 }
 
@@ -339,7 +398,7 @@ struct SearchView: View {
 struct SearchResult: Identifiable {
     let id = UUID()
     let title: String
-    let summary: String
+    var summary: String
     let source: String?
 }
 

@@ -41,46 +41,27 @@ struct MainPanelView: View {
 
     // MARK: - 标签栏
 
+    /// 标签定义：标题、图标与 Cmd+数字 快捷键
+    private static let tabs: [(type: PanelType, title: String, icon: String, key: KeyEquivalent)] = [
+        (.notes, "便签", "note.text", "1"),
+        (.search, "搜索", "magnifyingglass", "2"),
+        (.translation, "翻译", "globe", "3"),
+        (.memo, "备忘", "key.fill", "4"),
+        (.guidance, "指导", "camera.viewfinder", "5")
+    ]
+
     private var tabBar: some View {
         HStack(spacing: 8) {
-            TabButton(
-                title: "便签",
-                icon: "note.text",
-                isSelected: selectedTab == .notes
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .notes }
-            }
-
-            TabButton(
-                title: "搜索",
-                icon: "magnifyingglass",
-                isSelected: selectedTab == .search
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .search }
-            }
-
-            TabButton(
-                title: "翻译",
-                icon: "globe",
-                isSelected: selectedTab == .translation
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .translation }
-            }
-
-            TabButton(
-                title: "备忘",
-                icon: "key.fill",
-                isSelected: selectedTab == .memo
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .memo }
-            }
-
-            TabButton(
-                title: "指导",
-                icon: "camera.viewfinder",
-                isSelected: selectedTab == .guidance
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .guidance }
+            ForEach(Self.tabs, id: \.type) { tab in
+                TabButton(
+                    title: tab.title,
+                    icon: tab.icon,
+                    isSelected: selectedTab == tab.type
+                ) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = tab.type }
+                }
+                .keyboardShortcut(tab.key, modifiers: .command)
+                .help("\(tab.title)（⌘\(tab.key.character)）")
             }
         }
         .padding(.horizontal, 18)

@@ -25,9 +25,6 @@ protocol LLMService {
 
     /// 拉取该服务实际可用的模型列表
     func listModels() async throws -> [String]
-
-    /// 智能搜索
-    func search(query: String) async throws -> String
 }
 
 // MARK: - LLM 服务工厂
@@ -127,15 +124,6 @@ class BaseLLMService: LLMService {
             case .assistant: return "【助手】\(message.content)"
             }
         }.joined(separator: "\n\n")
-    }
-
-    func search(query: String) async throws -> String {
-        let prompt = """
-        请回答以下问题，提供准确、简洁的信息：
-
-        \(query)
-        """
-        return try await sendMessage(prompt)
     }
 
     // MARK: - 辅助方法
