@@ -40,13 +40,36 @@ enum LLMProviderType: String, CaseIterable, Codable {
         case .claude:
             return ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307", "claude-3-opus-20240229"]
         case .qwen:
-            return ["qwen-turbo", "qwen-plus", "qwen-max", "qwen-max-longcontext"]
+            return ["qwen-turbo", "qwen-plus", "qwen-max", "qwen-vl-plus", "qwen-vl-max"]
         case .wenxin:
             return ["ernie-4.0-8k", "ernie-3.5-8k", "ernie-speed-8k"]
         case .deepseek:
             return ["deepseek-chat", "deepseek-coder"]
         case .ollama:
             return ["llama3.2", "llama3.1", "qwen2.5", "mistral", "codellama"]
+        }
+    }
+
+    /// 是否具备图片理解（视觉）能力
+    var supportsVision: Bool {
+        switch self {
+        case .openai, .claude, .qwen: return true
+        case .wenxin, .deepseek, .ollama: return false
+        }
+    }
+
+    /// 发送图片时应使用的模型：当前模型支持视觉则沿用，否则回退到该服务的默认视觉模型；
+    /// 返回 nil 表示该服务不支持视觉
+    func resolveVisionModel(configured: String) -> String? {
+        switch self {
+        case .openai:
+            return configured.hasPrefix("gpt-4o") || configured.hasPrefix("gpt-4-turbo") ? configured : "gpt-4o-mini"
+        case .claude:
+            return configured // Claude 全系列模型均支持视觉
+        case .qwen:
+            return configured.contains("vl") ? configured : "qwen-vl-plus"
+        case .wenxin, .deepseek, .ollama:
+            return nil
         }
     }
 
@@ -124,12 +147,19 @@ struct ChatMessage: Identifiable, Codable {
     var role: MessageRole
     var content: String
     var timestamp: Date
+    var imagesData: [Data]?  // 附带的图片（JPEG 数据），nil 或空表示纯文本消息
 
-    init(role: MessageRole, content: String) {
+    init(role: MessageRole, content: String, imagesData: [Data]? = nil) {
         self.id = UUID()
         self.role = role
         self.content = content
         self.timestamp = Date()
+        self.imagesData = imagesData
+    }
+
+    /// 是否携带图片
+    var hasImages: Bool {
+        !(imagesData?.isEmpty ?? true)
     }
 
     enum MessageRole: String, Codable {

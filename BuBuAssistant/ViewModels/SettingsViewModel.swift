@@ -39,6 +39,7 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("spriteOpacity") var spriteOpacity: Double = 1.0
     @AppStorage("enableAnimation") var enableAnimation: Bool = true
     @AppStorage("sleepDelay") var sleepDelay: Double = 300 // 秒
+    @AppStorage("use3DSprite") var use3DSprite: Bool = false // 是否使用 3D 模式
 
     // MARK: - LLM 设置
 
@@ -385,6 +386,7 @@ enum LLMError: LocalizedError {
     case parseError
     case rateLimited
     case serverError(String)
+    case visionNotSupported
 
     var errorDescription: String? {
         switch self {
@@ -394,6 +396,7 @@ enum LLMError: LocalizedError {
         case .parseError: return "解析响应失败"
         case .rateLimited: return "请求过于频繁，请稍后重试"
         case .serverError(let message): return "服务器错误: \(message)"
+        case .visionNotSupported: return "当前 AI 服务不支持图片理解，请在设置中切换到 OpenAI、Claude 或通义千问"
         }
     }
 }

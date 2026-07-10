@@ -23,9 +23,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 设置窗口
     private var settingsWindow: NSWindow?
 
+    // 悬浮指导窗口
+    private var guidanceWindow: GuidanceWindow?
+
     // 视图模型
     private var spriteViewModel = SpriteViewModel()
     private var notesViewModel = NotesViewModel()
+    @MainActor private lazy var guidanceViewModel = GuidanceViewModel()
     private var settingsViewModel: SettingsViewModel { SettingsViewModel.shared }
 
     // 订阅存储
@@ -50,6 +54,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(showSettings),
             name: .showSettings,
+            object: nil
+        )
+
+        // 监听指导窗口通知（精灵右键菜单触发）
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showGuidance),
+            name: .showGuidance,
             object: nil
         )
 
@@ -249,6 +261,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // 截图求指导
+        let guidanceItem = NSMenuItem(title: "📸 截图求指导", action: #selector(showGuidance), keyEquivalent: "g")
+        guidanceItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(guidanceItem)
+
         // 显示/隐藏精灵
         let toggleSpriteItem = NSMenuItem(title: "👁 显示/隐藏精灵", action: #selector(toggleSpriteWindow), keyEquivalent: "")
         menu.addItem(toggleSpriteItem)
@@ -282,16 +299,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         // 恢复上次位置
-        let x = UserDefaults.standard.double(forKey: "spriteWindowX")
-        let y = UserDefaults.standard.double(forKey: "spriteWindowY")
+        let savedX = UserDefaults.standard.double(forKey: "spriteWindowX")
+        let savedY = UserDefaults.standard.double(forKey: "spriteWindowY")
 
-        if x != 0 || y != 0 {
-            spriteWindow?.setFrameOrigin(NSPoint(x: x, y: y))
-        } else {
-            // 默认位置：屏幕右下角
+        var useDefaultPosition = true
+
+        // 检查保存的位置是否在当前可用屏幕范围内
+        if savedX != 0 || savedY != 0 {
+            let savedPoint = NSPoint(x: savedX, y: savedY)
+            // 检查该点是否在任一屏幕的可见区域内
+            for screen in NSScreen.screens {
+                if screen.visibleFrame.contains(savedPoint) {
+                    spriteWindow?.setFrameOrigin(savedPoint)
+                    useDefaultPosition = false
+                    break
+                }
+            }
+        }
+
+        // 使用默认位置：主屏幕右下角
+        if useDefaultPosition {
             if let screen = NSScreen.main {
                 let screenFrame = screen.visibleFrame
-                let windowSize = spriteWindow?.frame.size ?? NSSize(width: 120, height: 150)
+                let windowSize = spriteWindow?.frame.size ?? NSSize(width: 280, height: 400)
                 let x = screenFrame.maxX - windowSize.width - 50
                 let y = screenFrame.minY + 100
                 spriteWindow?.setFrameOrigin(NSPoint(x: x, y: y))
@@ -341,7 +371,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 window.makeKeyAndOrderFront(nil)
             }
+        } else {
+            setupSpriteWindow()
         }
+    }
+
+    // MARK: - 指导窗口
+
+    @MainActor @objc private func showGuidance() {
+        if guidanceWindow == nil {
+            guidanceWindow = GuidanceWindow(viewModel: guidanceViewModel)
+        }
+        guidanceWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func showSettings() {
@@ -436,6 +477,7 @@ enum PanelType {
     case search
     case translation
     case memo
+    case guidance
 }
 
 // MARK: - 通知名称
@@ -444,4 +486,5 @@ extension Notification.Name {
     static let switchPanel = Notification.Name("switchPanel")
     static let translateSelectedText = Notification.Name("translateSelectedText")
     static let showSettings = Notification.Name("showSettings")
+    static let showGuidance = Notification.Name("showGuidance")
 }

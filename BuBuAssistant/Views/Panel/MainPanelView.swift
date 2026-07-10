@@ -74,6 +74,14 @@ struct MainPanelView: View {
             ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .memo }
             }
+
+            TabButton(
+                title: "指导",
+                icon: "camera.viewfinder",
+                isSelected: selectedTab == .guidance
+            ) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = .guidance }
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
@@ -96,6 +104,8 @@ struct MainPanelView: View {
             TranslationView()
         case .memo:
             MemoView()
+        case .guidance:
+            GuidancePanelView()
         }
     }
 }

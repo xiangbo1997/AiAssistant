@@ -38,6 +38,13 @@
 		029 /* MemoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 128 /* MemoService.swift */; };
 		030 /* MemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 129 /* MemoView.swift */; };
 		031 /* MemoEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 130 /* MemoEditorView.swift */; };
+		032 /* Sprite3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 131 /* Sprite3DView.swift */; };
+		033 /* ScreenshotService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 132 /* ScreenshotService.swift */; };
+		034 /* GuidanceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 133 /* GuidanceViewModel.swift */; };
+		035 /* GuidanceWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134 /* GuidanceWindow.swift */; };
+		036 /* GuidanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 135 /* GuidanceView.swift */; };
+		037 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136 /* SpeechService.swift */; };
+		038 /* GuidancePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 137 /* GuidancePanelView.swift */; };
 		D84526A82EFE393800A47143 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D84526A72EFE393800A47143 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
@@ -73,6 +80,13 @@
 		128 /* MemoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoService.swift; sourceTree = "<group>"; };
 		129 /* MemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoView.swift; sourceTree = "<group>"; };
 		130 /* MemoEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoEditorView.swift; sourceTree = "<group>"; };
+		131 /* Sprite3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sprite3DView.swift; sourceTree = "<group>"; };
+		132 /* ScreenshotService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotService.swift; sourceTree = "<group>"; };
+		133 /* GuidanceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidanceViewModel.swift; sourceTree = "<group>"; };
+		134 /* GuidanceWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidanceWindow.swift; sourceTree = "<group>"; };
+		135 /* GuidanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidanceView.swift; sourceTree = "<group>"; };
+		136 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
+		137 /* GuidancePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidancePanelView.swift; sourceTree = "<group>"; };
 		201 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		202 /* BuBuAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BuBuAssistant.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -145,6 +159,7 @@
 				106 /* SpriteViewModel.swift */,
 				107 /* NotesViewModel.swift */,
 				108 /* SettingsViewModel.swift */,
+				133 /* GuidanceViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -162,6 +177,8 @@
 				125 /* HotkeyService.swift */,
 				126 /* LaunchAtLoginService.swift */,
 				128 /* MemoService.swift */,
+				132 /* ScreenshotService.swift */,
+				136 /* SpeechService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -172,6 +189,7 @@
 				415 /* Sprite */,
 				416 /* Panel */,
 				417 /* Settings */,
+				419 /* Guidance */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -181,6 +199,7 @@
 			children = (
 				113 /* SpriteWindow.swift */,
 				114 /* SpriteView.swift */,
+				131 /* Sprite3DView.swift */,
 			);
 			path = Sprite;
 			sourceTree = "<group>";
@@ -213,6 +232,16 @@
 				121 /* BuBuTheme.swift */,
 			);
 			path = Theme;
+			sourceTree = "<group>";
+		};
+		419 /* Guidance */ = {
+			isa = PBXGroup;
+			children = (
+				134 /* GuidanceWindow.swift */,
+				135 /* GuidanceView.swift */,
+				137 /* GuidancePanelView.swift */,
+			);
+			path = Guidance;
 			sourceTree = "<group>";
 		};
 		420 /* Resources */ = {
@@ -297,6 +326,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				032 /* Sprite3DView.swift in Sources */,
+				033 /* ScreenshotService.swift in Sources */,
+				034 /* GuidanceViewModel.swift in Sources */,
+				035 /* GuidanceWindow.swift in Sources */,
+				036 /* GuidanceView.swift in Sources */,
+				037 /* SpeechService.swift in Sources */,
+				038 /* GuidancePanelView.swift in Sources */,
 				022 /* BuBuTheme.swift in Sources */,
 				023 /* SelectionService.swift in Sources */,
 				024 /* SearchHistoryService.swift in Sources */,
@@ -467,6 +503,8 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 BuBuAssistant. All rights reserved.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "布布需要使用麦克风来听你说话，进行语音输入";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "布布需要语音识别能力，把你说的话转换成文字";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -495,6 +533,8 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 BuBuAssistant. All rights reserved.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "布布需要使用麦克风来听你说话，进行语音输入";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "布布需要语音识别能力，把你说的话转换成文字";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

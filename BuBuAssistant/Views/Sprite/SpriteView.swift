@@ -27,19 +27,21 @@ struct SpriteView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 气泡区域（上方）- 自适应高度
+            Spacer(minLength: 0)
+
+            // 气泡区域 - 紧贴精灵上方，内容自动撑开高度
             if viewModel.showBubble, let bubble = viewModel.currentBubble {
                 BubbleView(bubble: bubble, onDismiss: {
                     viewModel.hideBubble()
                 })
-                    .transition(.scale.combined(with: .opacity))
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .opacity
+                ))
+                .padding(.horizontal, 8)
             }
 
-            Spacer(minLength: 10)
-
-            // 精灵区域（下方）
+            // 精灵区域（底部固定）
             ZStack {
                 spriteLayer
                 sleepingLayer
@@ -107,12 +109,8 @@ struct SpriteView: View {
 
     @ViewBuilder
     private var spriteImageView: some View {
-        // 使用缓存的图片
-        if let cached = cachedSpriteImage, lastCharacterId == viewModel.currentCharacter.id {
-            Image(nsImage: cached)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-        } else if viewModel.currentCharacter.isCustom,
+        // 自定义角色：从文件路径加载
+        if viewModel.currentCharacter.isCustom,
            let path = viewModel.currentCharacter.customImagePath,
            let nsImage = NSImage(contentsOfFile: path) {
             Image(nsImage: nsImage)
@@ -122,18 +120,11 @@ struct SpriteView: View {
                     cachedSpriteImage = nsImage
                     lastCharacterId = viewModel.currentCharacter.id
                 }
-        } else if let nsImage = NSImage(named: viewModel.currentCharacter.imageName), nsImage.isValid {
-            // 使用 Asset Catalog 中的图片
-            Image(nsImage: nsImage)
+        } else {
+            // 预设角色：直接使用 SwiftUI Image 从 Asset Catalog 加载
+            Image(viewModel.currentCharacter.imageName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .onAppear {
-                    cachedSpriteImage = nsImage
-                    lastCharacterId = viewModel.currentCharacter.id
-                }
-        } else {
-            // 使用 SF Symbol 作为默认占位图标
-            defaultSpriteIcon
         }
     }
 
@@ -292,7 +283,7 @@ struct BubbleView: View {
             if bubble.type == .response {
                 // 响应式高度：内容少时自适应，内容多时显示滚动
                 responsiveMarkdownView
-                    .frame(minWidth: 100, maxWidth: 300)
+                    .frame(minWidth: 100, maxWidth: 260)
                     .background(bubbleBackground)
             } else {
                 // 普通文本：高度自适应，无需 ScrollView
@@ -301,9 +292,9 @@ struct BubbleView: View {
                     .foregroundColor(bubbleTextColor)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 10)
-                    .frame(minWidth: 80, maxWidth: 280)
+                    .frame(minWidth: 60, maxWidth: 240)
                     .background(bubbleBackground)
             }
 
@@ -313,17 +304,17 @@ struct BubbleView: View {
                     onDismiss?()
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
+                        .font(.system(size: 14))
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
                 }
                 .buttonStyle(.plain)
-                .padding(8)
+                .padding(6)
             }
         }
     }
 
     // MARK: - 响应式 Markdown 视图
-    /// 内容少时自适应高度，内容多时最大 350 并显示滚动
+    /// 内容少时自适应高度，内容多时最大 300 并显示滚动
     @ViewBuilder
     private var responsiveMarkdownView: some View {
         // 使用 ViewThatFits 自动选择合适的布局
@@ -336,7 +327,7 @@ struct BubbleView: View {
             ScrollView {
                 markdownContent
             }
-            .frame(maxHeight: 350)
+            .frame(maxHeight: 300)
         }
     }
 
@@ -344,9 +335,9 @@ struct BubbleView: View {
         Markdown(bubble.message)
             .markdownTheme(.bubuTheme)
             .textSelection(.enabled)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .padding(.trailing, 16)
+            .padding(.trailing, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 

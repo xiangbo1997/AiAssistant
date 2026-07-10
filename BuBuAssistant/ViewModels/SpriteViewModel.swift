@@ -138,7 +138,7 @@ class SpriteViewModel: ObservableObject {
     /// 进入睡眠状态
     func enterSleep() {
         animationState = .sleeping
-        showBubble(message: "Zzz...", type: .greeting, duration: 0)
+        hideBubble()  // 睡眠时隐藏气泡，用 Zzz 动画代替
     }
 
     /// 唤醒

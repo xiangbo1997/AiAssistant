@@ -112,6 +112,11 @@ class SpriteWindow: NSPanel {
         hostingView.frame = contentView?.bounds ?? .zero
         hostingView.autoresizingMask = [.width, .height]
 
+        // 确保宿主视图图层完全透明，不绘制任何窗口背景
+        hostingView.wantsLayer = true
+        hostingView.layer?.isOpaque = false
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+
         contentView = hostingView
     }
 
@@ -125,21 +130,35 @@ class SpriteWindow: NSPanel {
 struct SpriteContainerView: View {
     @ObservedObject var spriteViewModel: SpriteViewModel
     @ObservedObject var notesViewModel: NotesViewModel
+    @ObservedObject var settingsViewModel: SettingsViewModel = SettingsViewModel.shared
     var onShowPanel: ((PanelType) -> Void)?
 
     var body: some View {
         ZStack {
-            // 精灵视图
-            SpriteView(viewModel: spriteViewModel)
-                .onTapGesture(count: 2) {
-                    handleDoubleTap()
-                }
-                .onTapGesture(count: 1) {
-                    handleTap()
-                }
-                .contextMenu {
-                    contextMenuContent
-                }
+            // 根据设置选择 2D 或 3D 精灵视图
+            if settingsViewModel.use3DSprite {
+                Sprite3DView(viewModel: spriteViewModel)
+                    .onTapGesture(count: 2) {
+                        handleDoubleTap()
+                    }
+                    .onTapGesture(count: 1) {
+                        handleTap()
+                    }
+                    .contextMenu {
+                        contextMenuContent
+                    }
+            } else {
+                SpriteView(viewModel: spriteViewModel)
+                    .onTapGesture(count: 2) {
+                        handleDoubleTap()
+                    }
+                    .onTapGesture(count: 1) {
+                        handleTap()
+                    }
+                    .contextMenu {
+                        contextMenuContent
+                    }
+            }
 
             // 动作选择菜单
             if spriteViewModel.showActionMenu {
@@ -214,6 +233,12 @@ struct SpriteContainerView: View {
             Label("备忘", systemImage: "key.fill")
         }
 
+        Button {
+            NotificationCenter.default.post(name: .showGuidance, object: nil)
+        } label: {
+            Label("截图求指导", systemImage: "camera.viewfinder")
+        }
+
         Divider()
 
         Menu("切换角色") {
@@ -229,6 +254,16 @@ struct SpriteContainerView: View {
                     }
                 }
             }
+        }
+
+        // 切换 2D/3D 模式
+        Button {
+            settingsViewModel.use3DSprite.toggle()
+        } label: {
+            Label(
+                settingsViewModel.use3DSprite ? "切换到 2D 模式" : "切换到 3D 模式",
+                systemImage: settingsViewModel.use3DSprite ? "square" : "cube"
+            )
         }
 
         Divider()
