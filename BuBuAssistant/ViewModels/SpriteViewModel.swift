@@ -72,6 +72,8 @@ class SpriteViewModel: ObservableObject {
     private var translationTask: Task<Void, Never>?
     /// 打字机任务：按固定节奏把会话缓冲吐进气泡
     private var typewriterTask: Task<Void, Never>?
+    /// 截图翻译任务（覆盖框选与 OCR 阶段，睡眠/新翻译可随时中止）
+    private var screenshotTask: Task<Void, Never>?
     /// 当前活跃的翻译会话（代际守卫：过期任务据此自行退出）
     private var currentSession: QuickTranslationSession?
     /// 最近一次翻译的输入与目标语言（供「切换目标语言重译」）
@@ -291,12 +293,14 @@ class SpriteViewModel: ObservableObject {
         }
     }
 
-    /// 中止进行中的快速翻译（流式请求与打字机一并取消）
+    /// 中止进行中的快速翻译（流式请求、打字机与截图流程一并取消）
     func cancelQuickTranslation() {
         translationTask?.cancel()
         translationTask = nil
         typewriterTask?.cancel()
         typewriterTask = nil
+        screenshotTask?.cancel()
+        screenshotTask = nil
         currentSession = nil
     }
 
@@ -361,21 +365,25 @@ class SpriteViewModel: ObservableObject {
         resetSleepTimer()
         hideBubble()
 
-        Task { @MainActor [weak self] in
+        screenshotTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
             // 用户按 Esc 取消截图时直接返回
             guard let rawData = await ScreenshotService.shared.captureInteractiveRaw() else {
                 return
             }
+            // 框选期间被睡眠或新翻译中止：不再恢复气泡
+            guard !Task.isCancelled else { return }
 
             self.animationState = .thinking
             self.showBubble(message: "正在识别文字...", type: .thinking, duration: 0)
 
             do {
                 let text = try await OCRService.shared.recognizeText(in: rawData)
+                guard !Task.isCancelled else { return }
                 self.performQuickTranslation(text: text)
             } catch {
+                guard !Task.isCancelled else { return }
                 // OCR 无结果：能走视觉模型就直翻，否则提示失败
                 self.performVisionTranslation(rawData: rawData)
             }
