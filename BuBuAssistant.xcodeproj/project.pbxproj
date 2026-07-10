@@ -45,6 +45,10 @@
 		036 /* GuidanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 135 /* GuidanceView.swift */; };
 		037 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136 /* SpeechService.swift */; };
 		038 /* GuidancePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 137 /* GuidancePanelView.swift */; };
+		039 /* LanguageDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138 /* LanguageDetector.swift */; };
+		040 /* TranslationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139 /* TranslationEngine.swift */; };
+		041 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 140 /* TranslationViewModel.swift */; };
+		042 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141 /* OCRService.swift */; };
 		D84526A82EFE393800A47143 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D84526A72EFE393800A47143 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
@@ -87,6 +91,10 @@
 		135 /* GuidanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidanceView.swift; sourceTree = "<group>"; };
 		136 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		137 /* GuidancePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidancePanelView.swift; sourceTree = "<group>"; };
+		138 /* LanguageDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageDetector.swift; sourceTree = "<group>"; };
+		139 /* TranslationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationEngine.swift; sourceTree = "<group>"; };
+		140 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
+		141 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		201 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		202 /* BuBuAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BuBuAssistant.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -160,6 +168,7 @@
 				107 /* NotesViewModel.swift */,
 				108 /* SettingsViewModel.swift */,
 				133 /* GuidanceViewModel.swift */,
+				140 /* TranslationViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -179,6 +188,9 @@
 				128 /* MemoService.swift */,
 				132 /* ScreenshotService.swift */,
 				136 /* SpeechService.swift */,
+				138 /* LanguageDetector.swift */,
+				139 /* TranslationEngine.swift */,
+				141 /* OCRService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -333,6 +345,10 @@
 				036 /* GuidanceView.swift in Sources */,
 				037 /* SpeechService.swift in Sources */,
 				038 /* GuidancePanelView.swift in Sources */,
+				039 /* LanguageDetector.swift in Sources */,
+				040 /* TranslationEngine.swift in Sources */,
+				041 /* TranslationViewModel.swift in Sources */,
+				042 /* OCRService.swift in Sources */,
 				022 /* BuBuTheme.swift in Sources */,
 				023 /* SelectionService.swift in Sources */,
 				024 /* SearchHistoryService.swift in Sources */,

@@ -45,9 +45,38 @@ class SpriteViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
 
-    // MARK: - 翻译结果缓存（避免重复翻译相同内容）
-    private var translationCache: [String: String] = [:]
-    private let maxCacheSize = 50
+    // MARK: - 快速翻译状态（流式 + 打字机）
+
+    /// 快速翻译的输入源：选中文字、词典查词或截图（截图存压缩后的 JPEG，供视觉模型重译）
+    private enum QuickTranslationInput {
+        case text(String)
+        case dictionaryWord(String)
+        case image(Data)
+    }
+
+    /// 单次翻译的会话状态。缓冲按代独立持有：协作式取消不会丢弃在途的流元素，
+    /// 被顶替的旧任务恢复后写的是自己的会话对象，不会污染新任务的气泡与历史
+    private final class QuickTranslationSession {
+        let input: QuickTranslationInput
+        let target: Language
+        var buffer = ""
+        var finished = false
+
+        init(input: QuickTranslationInput, target: Language) {
+            self.input = input
+            self.target = target
+        }
+    }
+
+    /// 流式翻译任务
+    private var translationTask: Task<Void, Never>?
+    /// 打字机任务：按固定节奏把会话缓冲吐进气泡
+    private var typewriterTask: Task<Void, Never>?
+    /// 当前活跃的翻译会话（代际守卫：过期任务据此自行退出）
+    private var currentSession: QuickTranslationSession?
+    /// 最近一次翻译的输入与目标语言（供「切换目标语言重译」）
+    private var lastInput: QuickTranslationInput?
+    private var lastTranslationTarget: Language = .chinese
 
     // MARK: - 初始化
 
@@ -172,12 +201,24 @@ class SpriteViewModel: ObservableObject {
     private var bubbleHideWorkItem: DispatchWorkItem?
 
     /// 显示气泡消息
-    func showBubble(message: String, type: SpriteBubble.BubbleType, duration: TimeInterval = 3) {
+    func showBubble(
+        message: String,
+        type: SpriteBubble.BubbleType,
+        duration: TimeInterval = 3,
+        isStreaming: Bool = false,
+        actions: [BubbleAction] = []
+    ) {
         // 取消之前的自动隐藏定时器
         bubbleHideWorkItem?.cancel()
         bubbleHideWorkItem = nil
 
-        currentBubble = SpriteBubble(message: message, type: type, duration: duration)
+        currentBubble = SpriteBubble(
+            message: message,
+            type: type,
+            duration: duration,
+            isStreaming: isStreaming,
+            actions: actions
+        )
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             showBubble = true
         }
@@ -192,8 +233,9 @@ class SpriteViewModel: ObservableObject {
         }
     }
 
-    /// 隐藏气泡
+    /// 隐藏气泡（若翻译流仍在进行，一并中止）
     func hideBubble() {
+        cancelQuickTranslation()
         withAnimation(.easeOut(duration: 0.2)) {
             showBubble = false
         }
@@ -232,90 +274,257 @@ class SpriteViewModel: ObservableObject {
     func handleDropForTranslation(text: String) {
         isDragOver = false
         droppedText = text
-        animationState = .thinking
-
-        // 显示原文气泡
-        let previewText = text.count > 30 ? String(text.prefix(30)) + "..." : text
-        showBubble(message: "翻译中: \(previewText)", type: .thinking, duration: 0)
-
-        // 执行翻译
         performQuickTranslation(text: text)
     }
 
-    /// 执行快速翻译（带缓存）
-    private func performQuickTranslation(text: String) {
-        // 检查缓存
-        if let cached = translationCache[text] {
-            DispatchQueue.main.async { [weak self] in
-                self?.animationState = .happy
-                self?.showBubble(message: cached, type: .response, duration: 0)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                    self?.startIdleAnimation()
-                }
+    /// 切换目标语言后重译最近一次的输入（文字、单词或截图）
+    func retranslate(to target: Language) {
+        switch lastInput {
+        case .text(let text):
+            performQuickTranslation(text: text, target: target)
+        case .dictionaryWord(let word):
+            runDictionaryLookup(word: word, target: target)
+        case .image(let jpegData):
+            runVisionTranslation(jpegData: jpegData, target: target)
+        case nil:
+            break
+        }
+    }
+
+    /// 中止进行中的快速翻译（流式请求与打字机一并取消）
+    func cancelQuickTranslation() {
+        translationTask?.cancel()
+        translationTask = nil
+        typewriterTask?.cancel()
+        typewriterTask = nil
+        currentSession = nil
+    }
+
+    /// 执行快速翻译：流式接收 + 打字机吐字 + 说话动画
+    private func performQuickTranslation(text: String, target: Language? = nil) {
+        // 单词/短语走词典模式：给音标、词性、释义、例句
+        if LanguageDetector.isDictionaryQuery(text) {
+            runDictionaryLookup(word: text.trimmingCharacters(in: .whitespacesAndNewlines), target: target)
+            return
+        }
+
+        cancelQuickTranslation()
+        resetSleepTimer()
+
+        let targetLang = target ?? LanguageDetector.quickTargetLanguage(for: text)
+        lastInput = .text(text)
+        lastTranslationTarget = targetLang
+
+        // 历史缓存命中：直接完整显示，零 API 调用
+        if let cached = TranslationEngine.shared.cachedTranslation(text: text, target: targetLang) {
+            animationState = .happy
+            showBubble(message: cached, type: .response, duration: 0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.startIdleAnimation()
             }
             return
         }
 
-        Task {
+        animationState = .thinking
+        let previewText = text.count > 30 ? String(text.prefix(30)) + "..." : text
+        showBubble(message: "翻译中: \(previewText)", type: .thinking, duration: 0)
+
+        let session = QuickTranslationSession(input: .text(text), target: targetLang)
+        startStreamingTranslation(session: session) {
+            try TranslationEngine.shared.stream(text: text, target: targetLang)
+        }
+    }
+
+    /// 词典查词：单词/短语返回音标、词性、释义与例句
+    private func runDictionaryLookup(word: String, target: Language? = nil) {
+        cancelQuickTranslation()
+        resetSleepTimer()
+
+        let targetLang = target ?? LanguageDetector.quickTargetLanguage(for: word)
+        lastInput = .dictionaryWord(word)
+        lastTranslationTarget = targetLang
+
+        animationState = .thinking
+        showBubble(message: "查词中: \(word)", type: .thinking, duration: 0)
+
+        let session = QuickTranslationSession(input: .dictionaryWord(word), target: targetLang)
+        startStreamingTranslation(session: session) {
+            try TranslationEngine.shared.dictionaryStream(word: word, target: targetLang)
+        }
+    }
+
+    // MARK: - 截图翻译
+
+    /// 截图翻译：框选截图 → 本地 OCR → 翻译；识别不到文字时用视觉模型直翻兜底
+    func translateScreenshot() {
+        cancelQuickTranslation()
+        resetSleepTimer()
+        hideBubble()
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            // 用户按 Esc 取消截图时直接返回
+            guard let rawData = await ScreenshotService.shared.captureInteractiveRaw() else {
+                return
+            }
+
+            self.animationState = .thinking
+            self.showBubble(message: "正在识别文字...", type: .thinking, duration: 0)
+
             do {
-                let config = SettingsViewModel.shared.currentLLMConfig
-
-                // 检查 API Key
-                guard !config.apiKey.isEmpty else {
-                    await MainActor.run {
-                        showBubble(message: "请先配置 API Key", type: .error, duration: 3)
-                        startIdleAnimation()
-                    }
-                    return
-                }
-
-                let service = LLMServiceFactory.create(for: config)
-
-                // 检测语言并翻译
-                let targetLang = detectTargetLanguage(text)
-                let result = try await service.translate(text: text, from: "自动检测", to: targetLang)
-
-                // 缓存结果
-                await MainActor.run { [weak self] in
-                    guard let self = self else { return }
-
-                    // 限制缓存大小
-                    if self.translationCache.count >= self.maxCacheSize {
-                        self.translationCache.removeAll()
-                    }
-                    self.translationCache[text] = result
-
-                    // 显示翻译结果（持久显示，duration: 0 表示不自动消失）
-                    self.animationState = .happy
-                    self.showBubble(message: result, type: .response, duration: 0)
-
-                    // 保存到翻译历史
-                    TranslationHistoryService.shared.addRecord(
-                        sourceText: text,
-                        targetText: result,
-                        sourceLanguage: "自动检测",
-                        targetLanguage: targetLang
-                    )
-
-                    // 恢复待机动画（但保持气泡显示）
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                        self?.startIdleAnimation()
-                    }
-                }
+                let text = try await OCRService.shared.recognizeText(in: rawData)
+                self.performQuickTranslation(text: text)
             } catch {
-                await MainActor.run {
-                    showBubble(message: "翻译失败: \(error.localizedDescription)", type: .error, duration: 3)
-                    startIdleAnimation()
-                }
+                // OCR 无结果：能走视觉模型就直翻，否则提示失败
+                self.performVisionTranslation(rawData: rawData)
             }
         }
     }
 
-    /// 检测目标语言（中文翻译成英文，其他翻译成中文）
-    private func detectTargetLanguage(_ text: String) -> String {
-        // 简单检测：如果包含中文字符，翻译成英文；否则翻译成中文
-        let chineseRange = text.range(of: "\\p{Han}", options: .regularExpression)
-        return chineseRange != nil ? "英语" : "中文"
+    /// 视觉模型直翻兜底：压缩截图后交给视觉模型识别并翻译
+    private func performVisionTranslation(rawData: Data) {
+        let config = SettingsViewModel.shared.currentLLMConfig
+        guard config.provider.supportsVision,
+              let image = NSImage(data: rawData),
+              let jpegData = image.compressedForLLM() else {
+            showBubble(
+                message: "没有识别到文字~ 当前 AI 服务不支持图片理解，换一张文字更清晰的截图试试吧。",
+                type: .error,
+                duration: 5
+            )
+            startIdleAnimation()
+            return
+        }
+
+        runVisionTranslation(jpegData: jpegData, target: .chinese)
+    }
+
+    /// 执行视觉直翻（jpegData 为压缩后的图片，可直接用于重译）
+    private func runVisionTranslation(jpegData: Data, target: Language) {
+        cancelQuickTranslation()
+        resetSleepTimer()
+
+        lastInput = .image(jpegData)
+        lastTranslationTarget = target
+
+        animationState = .thinking
+        showBubble(message: "布布正在看图翻译...", type: .thinking, duration: 0)
+
+        let session = QuickTranslationSession(input: .image(jpegData), target: target)
+        startStreamingTranslation(session: session) {
+            try TranslationEngine.shared.visionStream(imageData: jpegData, target: target)
+        }
+    }
+
+    /// 消费翻译流：首个 chunk 到达后切换为打字机说话气泡。
+    /// 所有写入都落在本代 session 上，并以 currentSession 恒等作代际守卫
+    private func startStreamingTranslation(
+        session: QuickTranslationSession,
+        makeStream: @escaping () throws -> AsyncThrowingStream<String, Error>
+    ) {
+        currentSession = session
+
+        translationTask = Task { @MainActor [weak self] in
+            do {
+                let stream = try makeStream()
+
+                var bubbleStarted = false
+                for try await chunk in stream {
+                    // 代际守卫：已被新任务顶替时直接退出（取消只是标志位，
+                    // 已在途的 chunk 仍会送达一次）
+                    guard let self, self.currentSession === session else { return }
+                    try Task.checkCancellation()
+
+                    if !bubbleStarted {
+                        bubbleStarted = true
+                        self.beginSpeakingBubble(session: session)
+                    }
+                    session.buffer += chunk
+                }
+
+                guard let self, self.currentSession === session else { return }
+                try Task.checkCancellation()
+
+                guard bubbleStarted else {
+                    self.showBubble(message: "翻译失败: 服务返回了空结果", type: .error, duration: 4)
+                    self.startIdleAnimation()
+                    return
+                }
+                // 流式接收完毕，打字机吐完剩余文字后收尾（见 finishSpeakingBubble）
+                session.finished = true
+            } catch is CancellationError {
+                // 被新任务顶替或气泡被关闭，静默结束
+            } catch {
+                guard let self, self.currentSession === session else { return }
+                self.typewriterTask?.cancel()
+                self.showBubble(message: "翻译失败: \(error.localizedDescription)", type: .error, duration: 4)
+                self.startIdleAnimation()
+            }
+        }
+    }
+
+    /// 首个译文 chunk 到达：切换为说话状态，启动打字机气泡
+    private func beginSpeakingBubble(session: QuickTranslationSession) {
+        animationState = .talking
+        showBubble(message: "", type: .response, duration: 0, isStreaming: true)
+
+        let bubbleID = currentBubble?.id
+        typewriterTask = Task { @MainActor [weak self] in
+            var displayed = 0
+            while !Task.isCancelled {
+                guard let self else { return }
+
+                // 被新翻译顶替：UI 状态归新任务管，静默退出
+                guard self.currentSession === session else { return }
+
+                // 气泡被其他消息顶替：终止打字机，复位遗留的说话动画
+                guard self.currentBubble?.id == bubbleID else {
+                    if self.animationState == .talking {
+                        self.startIdleAnimation()
+                    }
+                    return
+                }
+
+                if displayed < session.buffer.count {
+                    // 匀速吐字（约 30 字/秒）；缓冲积压过多时加速追赶，控制展示延迟
+                    let buffer = session.buffer
+                    let backlog = buffer.count - displayed
+                    let advance = min(max(2, backlog / 20), backlog)
+                    let start = buffer.index(buffer.startIndex, offsetBy: displayed)
+                    let end = buffer.index(start, offsetBy: advance)
+                    self.currentBubble?.message += String(buffer[start..<end])
+                    displayed += advance
+                } else if session.finished {
+                    self.finishSpeakingBubble(session: session)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 60_000_000)
+            }
+        }
+    }
+
+    /// 打字机吐完全部文字：收尾并写入翻译历史。
+    /// 历史内容取自本代 session 快照，不受后续任务改写实例状态影响
+    private func finishSpeakingBubble(session: QuickTranslationSession) {
+        currentBubble?.message = session.buffer
+        currentBubble?.isStreaming = false
+        animationState = .happy
+        currentSession = nil
+
+        // 截图直翻拿不到原文、词典卡片非纯译文，只有文字输入才写历史
+        if case .text(let sourceText) = session.input {
+            TranslationEngine.shared.saveRecord(
+                sourceText: sourceText,
+                targetText: session.buffer,
+                source: .auto,
+                target: session.target
+            )
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.startIdleAnimation()
+        }
     }
 
     /// 执行拖拽动作

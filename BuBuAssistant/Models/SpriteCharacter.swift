@@ -65,6 +65,8 @@ struct SpriteBubble: Identifiable {
     var message: String
     var type: BubbleType
     var duration: TimeInterval // 显示时长，0 表示手动关闭
+    var isStreaming: Bool = false      // 打字机进行中（流式输出未结束）
+    var actions: [BubbleAction] = []   // 底部操作按钮（如「截图翻译」）
 
     enum BubbleType {
         case greeting   // 问候
@@ -73,6 +75,14 @@ struct SpriteBubble: Identifiable {
         case thinking   // 思考中
         case error      // 错误
     }
+}
+
+/// 气泡内的操作按钮
+struct BubbleAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let handler: () -> Void
 }
 
 // MARK: - 拖拽动作

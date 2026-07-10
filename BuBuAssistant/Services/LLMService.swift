@@ -26,9 +26,6 @@ protocol LLMService {
     /// 拉取该服务实际可用的模型列表
     func listModels() async throws -> [String]
 
-    /// 翻译文本
-    func translate(text: String, from: String, to: String) async throws -> String
-
     /// 智能搜索
     func search(query: String) async throws -> String
 }
@@ -130,15 +127,6 @@ class BaseLLMService: LLMService {
             case .assistant: return "【助手】\(message.content)"
             }
         }.joined(separator: "\n\n")
-    }
-
-    func translate(text: String, from: String, to: String) async throws -> String {
-        let prompt = """
-        请将以下文本从\(from)翻译成\(to)，只返回翻译结果，不要添加任何解释：
-
-        \(text)
-        """
-        return try await sendMessage(prompt)
     }
 
     func search(query: String) async throws -> String {

@@ -29,9 +29,12 @@ struct SpriteView: View {
             if viewModel.showBubble, let bubble = viewModel.currentBubble {
                 BubbleView(bubble: bubble, onDismiss: {
                     viewModel.hideBubble()
+                }, onRetranslate: { lang in
+                    viewModel.retranslate(to: lang)
                 })
+                // 从尾巴处弹出，像对白框从嘴边冒出来
                 .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    insertion: .scale(scale: 0.1, anchor: .bottom).combined(with: .opacity),
                     removal: .opacity
                 ))
                 .padding(.horizontal, 8)
@@ -258,37 +261,51 @@ struct SpriteView: View {
 struct BubbleView: View {
     let bubble: SpriteBubble
     var onDismiss: (() -> Void)? = nil
+    /// 切换目标语言重译（仅翻译结果气泡使用）
+    var onRetranslate: ((Language) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             bubbleContent
             bubbleArrow
         }
-        .onTapGesture {
-            onDismiss?()
-        }
     }
 
     private var bubbleContent: some View {
         ZStack(alignment: .topTrailing) {
-            // 使用 MarkdownUI 渲染（适用于翻译/搜索结果）
-            if bubble.type == .response {
-                // 响应式高度：内容少时自适应，内容多时显示滚动
-                responsiveMarkdownView
-                    .frame(minWidth: 100, maxWidth: 260)
-                    .background(bubbleBackground)
-            } else {
-                // 普通文本：高度自适应，无需 ScrollView
-                Text(bubble.message)
-                    .font(BuBuFonts.body)
-                    .foregroundColor(bubbleTextColor)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(minWidth: 60, maxWidth: 240)
-                    .background(bubbleBackground)
+            VStack(alignment: .leading, spacing: 4) {
+                // 点击文本区域关闭气泡；手势只挂在内容上，
+                // 避免与操作按钮行、语言菜单的点击竞争
+                Group {
+                    if bubble.type == .response {
+                        if bubble.isStreaming {
+                            // 打字机进行中：纯文本渲染，避免半截 Markdown 反复重排闪烁
+                            streamingTextView
+                        } else {
+                            // 响应式高度：内容少时自适应，内容多时显示滚动
+                            responsiveMarkdownView
+                        }
+                    } else {
+                        // 普通文本：高度自适应，无需 ScrollView
+                        Text(bubble.message)
+                            .font(BuBuFonts.body)
+                            .foregroundColor(bubbleTextColor)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismiss?()
+                }
+
+                actionRow
             }
+            .frame(minWidth: bubble.type == .response ? 100 : 60,
+                   maxWidth: bubble.type == .response ? 260 : 240)
+            .background(bubbleBackground)
 
             // 翻译结果显示关闭按钮
             if bubble.type == .response {
@@ -303,6 +320,113 @@ struct BubbleView: View {
                 .padding(6)
             }
         }
+    }
+
+    // MARK: - 操作按钮行
+
+    /// 翻译结果的内置操作（复制/朗读/切换语言）+ 气泡自带的自定义按钮
+    @ViewBuilder
+    private var actionRow: some View {
+        let showBuiltins = bubble.type == .response && !bubble.isStreaming
+        if showBuiltins || !bubble.actions.isEmpty {
+            HStack(spacing: 12) {
+                ForEach(bubble.actions) { action in
+                    bubbleActionButton(title: action.title, icon: action.icon, color: BuBuColors.skyBlue) {
+                        action.handler()
+                    }
+                }
+
+                if showBuiltins {
+                    Spacer(minLength: 0)
+
+                    bubbleActionButton(title: "复制", icon: "doc.on.doc", color: BuBuColors.skyBlue) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(bubble.message, forType: .string)
+                    }
+
+                    bubbleActionButton(title: "朗读", icon: "speaker.wave.2", color: BuBuColors.lavender) {
+                        if SpeechService.shared.isSpeaking {
+                            SpeechService.shared.stopSpeaking()
+                        } else {
+                            SpeechService.shared.speak(bubble.message)
+                        }
+                    }
+
+                    if onRetranslate != nil {
+                        Menu {
+                            ForEach(Language.allCases.filter { $0 != .auto }, id: \.self) { lang in
+                                Button(lang.displayName) {
+                                    onRetranslate?(lang)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "globe")
+                                Text("语言")
+                            }
+                            .font(BuBuFonts.tiny)
+                            .foregroundColor(BuBuColors.skyBlue)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private func bubbleActionButton(
+        title: String,
+        icon: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                Text(title)
+            }
+            .font(BuBuFonts.tiny)
+            .foregroundColor(color)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 打字机文本视图
+    /// 与 Markdown 视图同样的自适应策略；超高后切滚动并自动跟随底部
+
+    @ViewBuilder
+    private var streamingTextView: some View {
+        ViewThatFits(in: .vertical) {
+            streamingText
+                .fixedSize(horizontal: false, vertical: true)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    streamingText
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bubble-bottom")
+                }
+                .frame(maxHeight: 300)
+                .onChange(of: bubble.message) { _, _ in
+                    proxy.scrollTo("bubble-bottom", anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private var streamingText: some View {
+        Text(bubble.message + "▌")
+            .font(BuBuFonts.body)
+            .foregroundColor(BuBuColors.chocolateBrown)
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .padding(.trailing, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - 响应式 Markdown 视图

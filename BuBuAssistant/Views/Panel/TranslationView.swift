@@ -3,24 +3,17 @@
 //  BuBuAssistant
 //
 //  Created by Claude Code on 2025-12-19.
-//  翻译视图 - 多语言翻译功能
+//  翻译视图 - 多语言翻译功能（流式输出，逻辑收拢在 TranslationViewModel）
 //
 
 import SwiftUI
 
 struct TranslationView: View {
-    @EnvironmentObject var settingsViewModel: SettingsViewModel
+    @StateObject private var viewModel = TranslationViewModel()
     @StateObject private var historyService = TranslationHistoryService.shared
-    @State private var sourceText = ""
-    @State private var translatedText = ""
-    @State private var sourceLanguage: Language = .auto
-    @State private var targetLanguage: Language = .english
-    @State private var isTranslating = false
-    @State private var errorMessage: String?
     @State private var showHistory = false
-
-    /// 用于接收外部传入的待翻译文字（如选中文字）
-    var initialText: String? = nil
+    /// 自动翻译开关（停止输入 0.8 秒后自动触发），持久化到 UserDefaults
+    @AppStorage(TranslationViewModel.autoTranslateKey) private var autoTranslate = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,7 +30,7 @@ struct TranslationView: View {
                         .font(BuBuFonts.caption)
                         .foregroundColor(BuBuColors.chocolateBrown.opacity(0.7))
 
-                    TextEditor(text: $sourceText)
+                    TextEditor(text: $viewModel.sourceText)
                         .font(BuBuFonts.body)
                         .foregroundColor(BuBuColors.chocolateBrown)
                         .scrollContentBackground(.hidden)
@@ -49,26 +42,25 @@ struct TranslationView: View {
                         )
 
                     HStack {
-                        Text("\(sourceText.count) 字符")
+                        Text("\(viewModel.sourceText.count) 字符")
                             .font(BuBuFonts.tiny)
                             .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
 
                         Spacer()
 
                         Button {
-                            sourceText = ""
-                            translatedText = ""
+                            viewModel.clear()
                         } label: {
                             Image(systemName: "xmark.circle")
                                 .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
                         }
                         .buttonStyle(.plain)
-                        .disabled(sourceText.isEmpty)
+                        .disabled(viewModel.sourceText.isEmpty)
 
                         Button {
                             if let content = NSPasteboard.general.string(forType: .string) {
-                                sourceText = content
+                                viewModel.sourceText = content
                             }
                         } label: {
                             Image(systemName: "doc.on.clipboard")
@@ -78,14 +70,14 @@ struct TranslationView: View {
                         .buttonStyle(.plain)
 
                         Button {
-                            speakText(sourceText)
+                            viewModel.speak(viewModel.sourceText)
                         } label: {
                             Image(systemName: "speaker.wave.2")
                                 .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.lavender)
                         }
                         .buttonStyle(.plain)
-                        .disabled(sourceText.isEmpty)
+                        .disabled(viewModel.sourceText.isEmpty)
                     }
                 }
                 .padding(14)
@@ -95,7 +87,7 @@ struct TranslationView: View {
                     Spacer()
 
                     Button {
-                        swapLanguages()
+                        viewModel.swapLanguages()
                     } label: {
                         Image(systemName: "arrow.left.arrow.right")
                             .font(.system(size: 15, weight: .medium))
@@ -107,53 +99,56 @@ struct TranslationView: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .disabled(sourceLanguage == .auto)
+                    .disabled(viewModel.sourceLanguage == .auto)
 
                     Spacer()
                 }
 
-                // 译文
+                // 译文（流式输出，边生成边显示）
                 VStack(alignment: .leading, spacing: 10) {
                     Text("译文")
                         .font(BuBuFonts.caption)
                         .foregroundColor(BuBuColors.chocolateBrown.opacity(0.7))
 
-                    if isTranslating {
-                        VStack(spacing: 10) {
-                            Spacer()
-                            ProgressView()
-                                .tint(BuBuColors.skyBlue)
-                            Text("翻译中...")
-                                .font(BuBuFonts.caption)
-                                .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    TextEditor(text: .constant(viewModel.translatedText))
+                        .font(BuBuFonts.body)
+                        .foregroundColor(BuBuColors.chocolateBrown)
+                        .scrollContentBackground(.hidden)
+                        .padding(12)
                         .background(
                             RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
                                 .fill(Color.white)
                                 .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 6, x: 0, y: 3)
                         )
-                    } else {
-                        TextEditor(text: .constant(translatedText))
-                            .font(BuBuFonts.body)
-                            .foregroundColor(BuBuColors.chocolateBrown)
-                            .scrollContentBackground(.hidden)
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: BuBuShapes.inputRadius)
-                                    .fill(Color.white)
-                                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 6, x: 0, y: 3)
-                            )
-                    }
+                        .overlay {
+                            // 首个字符到达前显示等待提示
+                            if viewModel.isTranslating && viewModel.translatedText.isEmpty {
+                                VStack(spacing: 10) {
+                                    ProgressView()
+                                        .tint(BuBuColors.skyBlue)
+                                    Text("翻译中...")
+                                        .font(BuBuFonts.caption)
+                                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
+                                }
+                            }
+                        }
 
                     HStack {
-                        if let error = errorMessage {
+                        if let error = viewModel.errorMessage {
                             Text(error)
                                 .font(BuBuFonts.tiny)
                                 .foregroundColor(BuBuColors.coralPink)
+                        } else if viewModel.isTranslating {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .scaleEffect(0.5)
+                                    .tint(BuBuColors.skyBlue)
+                                Text("翻译中...")
+                                    .font(BuBuFonts.tiny)
+                                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
+                            }
                         } else {
-                            Text("\(translatedText.count) 字符")
+                            Text("\(viewModel.translatedText.count) 字符")
                                 .font(BuBuFonts.tiny)
                                 .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
                         }
@@ -162,24 +157,24 @@ struct TranslationView: View {
 
                         Button {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(translatedText, forType: .string)
+                            NSPasteboard.general.setString(viewModel.translatedText, forType: .string)
                         } label: {
                             Image(systemName: "doc.on.doc")
                                 .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.skyBlue)
                         }
                         .buttonStyle(.plain)
-                        .disabled(translatedText.isEmpty)
+                        .disabled(viewModel.translatedText.isEmpty)
 
                         Button {
-                            speakText(translatedText)
+                            viewModel.speak(viewModel.translatedText)
                         } label: {
                             Image(systemName: "speaker.wave.2")
                                 .font(.system(size: 15))
                                 .foregroundColor(BuBuColors.lavender)
                         }
                         .buttonStyle(.plain)
-                        .disabled(translatedText.isEmpty)
+                        .disabled(viewModel.translatedText.isEmpty)
                     }
                 }
                 .padding(14)
@@ -192,7 +187,7 @@ struct TranslationView: View {
                 Spacer()
 
                 Button {
-                    performTranslation()
+                    viewModel.translate()
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "globe")
@@ -210,8 +205,8 @@ struct TranslationView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(sourceText.isEmpty || isTranslating)
-                .opacity(sourceText.isEmpty || isTranslating ? 0.6 : 1)
+                .disabled(viewModel.sourceText.isEmpty || viewModel.isTranslating)
+                .opacity(viewModel.sourceText.isEmpty || viewModel.isTranslating ? 0.6 : 1)
                 .keyboardShortcut(.return, modifiers: .command)
 
                 Spacer()
@@ -219,20 +214,10 @@ struct TranslationView: View {
             .padding(18)
             .background(BuBuColors.creamWhite)
         }
-        .onAppear {
-            // 如果有初始文字，填充并自动翻译
-            if let text = initialText, !text.isEmpty {
-                sourceText = text
-                performTranslation()
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .translateSelectedText)) { notification in
-            // 接收选中文字翻译通知
-            if let text = notification.object as? String, !text.isEmpty {
-                sourceText = text
-                translatedText = ""
-                errorMessage = nil
-                performTranslation()
+            // 接收选中文字翻译通知（重复触发的去重在 ViewModel 内处理）
+            if let text = notification.object as? String {
+                viewModel.translateExternalText(text)
             }
         }
     }
@@ -242,7 +227,7 @@ struct TranslationView: View {
     private var languageBar: some View {
         HStack(spacing: 20) {
             // 源语言
-            Picker("源语言", selection: $sourceLanguage) {
+            Picker("源语言", selection: $viewModel.sourceLanguage) {
                 ForEach(Language.allCases, id: \.self) { lang in
                     Text(lang.displayName)
                         .foregroundColor(BuBuColors.chocolateBrown)
@@ -253,12 +238,19 @@ struct TranslationView: View {
             .frame(width: 130)
             .accentColor(BuBuColors.chocolateBrown)
 
+            // 自动检测的识别结果回显
+            if viewModel.sourceLanguage == .auto, let detected = viewModel.detectedLanguage {
+                Text("检测到：\(detected.displayName)")
+                    .font(BuBuFonts.tiny)
+                    .foregroundColor(BuBuColors.skyBlue)
+            }
+
             Image(systemName: "arrow.right")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(BuBuColors.skyBlue)
 
             // 目标语言
-            Picker("目标语言", selection: $targetLanguage) {
+            Picker("目标语言", selection: $viewModel.targetLanguage) {
                 ForEach(Language.allCases.filter { $0 != .auto }, id: \.self) { lang in
                     Text(lang.displayName)
                         .foregroundColor(BuBuColors.chocolateBrown)
@@ -270,6 +262,14 @@ struct TranslationView: View {
             .accentColor(BuBuColors.chocolateBrown)
 
             Spacer()
+
+            // 自动翻译开关
+            Toggle("自动翻译", isOn: $autoTranslate)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(BuBuFonts.tiny)
+                .foregroundColor(BuBuColors.chocolateBrown.opacity(0.7))
+                .help("停止输入 0.8 秒后自动翻译")
 
             // 历史记录按钮
             Button {
@@ -333,8 +333,7 @@ struct TranslationView: View {
                         ForEach(historyService.translationHistory.prefix(20)) { record in
                             TranslationHistoryRow(record: record) {
                                 // 点击使用该翻译
-                                sourceText = record.sourceText
-                                translatedText = record.targetText
+                                viewModel.applyRecord(record)
                                 showHistory = false
                             } onToggleFavorite: {
                                 historyService.toggleFavorite(record)
@@ -349,107 +348,6 @@ struct TranslationView: View {
         }
         .frame(width: 320, height: 400)
         .background(BuBuColors.creamWhite)
-    }
-
-    // MARK: - 方法
-
-    private func swapLanguages() {
-        guard sourceLanguage != .auto else { return }
-
-        let temp = sourceLanguage
-        sourceLanguage = targetLanguage
-        targetLanguage = temp
-
-        let tempText = sourceText
-        sourceText = translatedText
-        translatedText = tempText
-    }
-
-    private func performTranslation() {
-        guard !sourceText.isEmpty else { return }
-
-        isTranslating = true
-        errorMessage = nil
-
-        // 调用 LLM 服务进行翻译
-        Task {
-            do {
-                // 获取 LLM 配置并创建服务
-                let config = settingsViewModel.currentLLMConfig
-
-                // 检查 API Key 是否配置
-                if config.apiKey.isEmpty {
-                    await MainActor.run {
-                        errorMessage = "请先在设置中配置 AI 服务的 API Key"
-                        isTranslating = false
-                    }
-                    return
-                }
-
-                let service = LLMServiceFactory.create(for: config)
-
-                // 构建翻译提示词
-                let sourceLangName = sourceLanguage == .auto ? "自动检测语言" : sourceLanguage.displayName
-                let targetLangName = targetLanguage.displayName
-
-                let result = try await service.translate(
-                    text: sourceText,
-                    from: sourceLangName,
-                    to: targetLangName
-                )
-
-                await MainActor.run {
-                    translatedText = result
-                    isTranslating = false
-
-                    // 保存到翻译历史
-                    historyService.addRecord(
-                        sourceText: sourceText,
-                        targetText: translatedText,
-                        sourceLanguage: sourceLanguage.displayName,
-                        targetLanguage: targetLanguage.displayName
-                    )
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "翻译失败：\(error.localizedDescription)"
-                    isTranslating = false
-                }
-            }
-        }
-    }
-
-    private func speakText(_ text: String) {
-        let synthesizer = NSSpeechSynthesizer()
-        synthesizer.startSpeaking(text)
-    }
-}
-
-// MARK: - 语言枚举
-
-enum Language: String, CaseIterable {
-    case auto = "auto"
-    case chinese = "zh"
-    case english = "en"
-    case japanese = "ja"
-    case korean = "ko"
-    case french = "fr"
-    case german = "de"
-    case spanish = "es"
-    case russian = "ru"
-
-    var displayName: String {
-        switch self {
-        case .auto: return "自动检测"
-        case .chinese: return "中文"
-        case .english: return "英语"
-        case .japanese: return "日语"
-        case .korean: return "韩语"
-        case .french: return "法语"
-        case .german: return "德语"
-        case .spanish: return "西班牙语"
-        case .russian: return "俄语"
-        }
     }
 }
 
@@ -522,6 +420,5 @@ struct TranslationHistoryRow: View {
 
 #Preview {
     TranslationView()
-        .environmentObject(SettingsViewModel())
         .frame(width: 500, height: 400)
 }

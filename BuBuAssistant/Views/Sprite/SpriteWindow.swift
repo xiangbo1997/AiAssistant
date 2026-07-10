@@ -228,6 +228,12 @@ struct SpriteContainerView: View {
         }
 
         Button {
+            spriteViewModel.translateScreenshot()
+        } label: {
+            Label("截图翻译", systemImage: "text.viewfinder")
+        }
+
+        Button {
             onShowPanel?(.memo)
         } label: {
             Label("备忘", systemImage: "key.fill")
@@ -307,22 +313,31 @@ struct SpriteContainerView: View {
                 // 有选中文字，直接翻译
                 spriteViewModel?.handleDropForTranslation(text: text)
             } else {
-                // 没有选中文字
+                // 取词失败时提供「截图翻译」直达入口，避免走进死胡同
+                let screenshotAction = BubbleAction(
+                    title: "截图翻译",
+                    icon: "text.viewfinder"
+                ) { [weak spriteViewModel] in
+                    spriteViewModel?.translateScreenshot()
+                }
+
                 if !hasPermission {
                     // 权限未授予，提示用户授权
                     spriteViewModel?.showBubble(
-                        message: "需要「辅助功能」权限才能自动获取选中文字~\n\n请在系统设置中授权，或者先复制文字(Cmd+C)再双击我。",
+                        message: "需要「辅助功能」权限才能自动获取选中文字~\n\n请在系统设置中授权，或复制文字(Cmd+C)再双击我，也可以点下面的「截图翻译」。",
                         type: .greeting,
-                        duration: 6
+                        duration: 8,
+                        actions: [screenshotAction]
                     )
                     // 打开设置
                     SelectionService.shared.openAccessibilitySettings()
                 } else {
                     // 权限已授予但没有选中文字
                     spriteViewModel?.showBubble(
-                        message: "没有检测到选中的文字~\n\n请先在其他应用中选中文字，然后双击我进行翻译。\n\n小提示：也可以先复制文字(Cmd+C)，我会自动读取剪贴板内容。",
+                        message: "没有检测到选中的文字~\n\n可以先选中或复制(Cmd+C)文字再双击我；复制不了的内容（图片、视频字幕等），点下面的「截图翻译」框选就行。",
                         type: .greeting,
-                        duration: 6
+                        duration: 8,
+                        actions: [screenshotAction]
                     )
                 }
             }

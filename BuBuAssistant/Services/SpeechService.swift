@@ -46,15 +46,18 @@ class SpeechService: NSObject, ObservableObject {
 
     // MARK: - 朗读（TTS）
 
-    /// 朗读文本：自动清理 Markdown 标记后用中文语音播报
-    func speak(_ text: String) {
+    /// 朗读文本：自动清理 Markdown 标记后播报。
+    /// 不指定 language 时按文本内容自动选择语音（避免中文语音念英文译文）
+    func speak(_ text: String, language: String? = nil) {
         stopSpeaking()
 
         let cleaned = Self.stripMarkdown(text)
         guard !cleaned.isEmpty else { return }
 
         let utterance = AVSpeechUtterance(string: cleaned)
-        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        let languageCode = language ?? LanguageDetector.speechLanguageCode(for: cleaned)
+        utterance.voice = AVSpeechSynthesisVoice(language: languageCode)
+            ?? AVSpeechSynthesisVoice(language: "zh-CN")
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
 
         isSpeaking = true

@@ -36,10 +36,22 @@ class ScreenshotService {
     // MARK: - 截图
 
     /// 交互式框选截图（体验与 Cmd+Shift+4 一致，按空格可切换整窗截取）。
-    /// 返回压缩后的 JPEG 数据；用户按 Esc 取消时返回 nil。
+    /// 返回压缩后的 JPEG 数据（适合发给视觉 LLM）；用户按 Esc 取消时返回 nil。
     func captureInteractive() async -> Data? {
+        guard let rawData = await captureInteractiveRaw(),
+              let image = NSImage(data: rawData) else {
+            return nil
+        }
+
+        // 压缩后再返回：截图仅在内存中使用，用完即删，不做持久化
+        return image.compressedForLLM()
+    }
+
+    /// 交互式框选截图，返回原始 PNG 数据。
+    /// 本地 OCR 对压缩和缩放敏感，识别场景使用此方法拿全分辨率原图
+    func captureInteractiveRaw() async -> Data? {
         let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("bubu-guidance-\(UUID().uuidString).png")
+            .appendingPathComponent("bubu-capture-\(UUID().uuidString).png")
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let process = Process()
@@ -58,13 +70,7 @@ class ScreenshotService {
         }
 
         // 用户取消时 screencapture 正常退出但不产生文件
-        guard launched,
-              FileManager.default.fileExists(atPath: tempURL.path),
-              let image = NSImage(contentsOf: tempURL) else {
-            return nil
-        }
-
-        // 压缩后再返回：截图仅在内存中使用，用完即删，不做持久化
-        return image.compressedForLLM()
+        guard launched else { return nil }
+        return try? Data(contentsOf: tempURL)
     }
 }

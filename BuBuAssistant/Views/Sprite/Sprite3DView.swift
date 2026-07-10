@@ -511,9 +511,12 @@ struct Sprite3DView: View {
             if viewModel.showBubble, let bubble = viewModel.currentBubble {
                 BubbleView(bubble: bubble, onDismiss: {
                     viewModel.hideBubble()
+                }, onRetranslate: { lang in
+                    viewModel.retranslate(to: lang)
                 })
+                // 从尾巴处弹出，像对白框从嘴边冒出来
                 .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    insertion: .scale(scale: 0.1, anchor: .bottom).combined(with: .opacity),
                     removal: .opacity
                 ))
                 .padding(.horizontal, 8)
