@@ -305,14 +305,40 @@ struct AISettingsView: View {
                         }
                     ))
 
-                    TextField("模型", text: Binding(
-                        get: { config.model },
-                        set: { newValue in
-                            var updatedConfig = config
-                            updatedConfig.model = newValue
-                            viewModel.updateLLMConfig(updatedConfig)
+                    HStack(spacing: 6) {
+                        TextField("模型（可选择或手动输入）", text: Binding(
+                            get: { config.model },
+                            set: { newValue in
+                                var updatedConfig = config
+                                updatedConfig.model = newValue
+                                viewModel.updateLLMConfig(updatedConfig)
+                            }
+                        ))
+
+                        // 常用模型下拉：点选填入输入框，中转站的自定义模型名仍可手动输入
+                        Menu {
+                            ForEach(viewModel.currentProvider.availableModels, id: \.self) { model in
+                                Button {
+                                    var updatedConfig = config
+                                    updatedConfig.model = model
+                                    viewModel.updateLLMConfig(updatedConfig)
+                                } label: {
+                                    HStack {
+                                        Text(model)
+                                        if model == config.model {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 11, weight: .medium))
                         }
-                    ))
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("选择常用模型")
+                    }
 
                     HStack {
                         Text("Temperature")
