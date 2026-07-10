@@ -131,8 +131,13 @@ class SettingsViewModel: ObservableObject {
            let metadata = try? JSONDecoder().decode([String: LLMConfigMetadata].self, from: data) {
             for (key, meta) in metadata {
                 if let provider = LLMProviderType(rawValue: key) {
-                    llmConfigs[provider]?.baseURL = meta.baseURL
-                    llmConfigs[provider]?.model = meta.model
+                    if !meta.baseURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                        llmConfigs[provider]?.baseURL = meta.baseURL
+                    }
+                    // 模型为空时保留默认模型，避免发出空 model 的无效请求
+                    if !meta.model.trimmingCharacters(in: .whitespaces).isEmpty {
+                        llmConfigs[provider]?.model = meta.model
+                    }
                     llmConfigs[provider]?.temperature = meta.temperature
                     llmConfigs[provider]?.maxTokens = meta.maxTokens
                 }
@@ -165,14 +170,26 @@ class SettingsViewModel: ObservableObject {
         }
     }
 
-    /// 获取当前 LLM 配置
+    /// 获取当前 LLM 配置（已净化：空模型/空地址回落默认值）
     var currentLLMConfig: LLMConfig {
-        llmConfigs[currentProvider] ?? LLMConfig(provider: currentProvider)
+        sanitized(llmConfigs[currentProvider] ?? LLMConfig(provider: currentProvider))
     }
 
     /// 更新 LLM 配置
     func updateLLMConfig(_ config: LLMConfig) {
         llmConfigs[config.provider] = config
+    }
+
+    /// 净化配置：模型/地址留空时回落到该服务的默认值，避免发出空 model 的无效请求
+    private func sanitized(_ config: LLMConfig) -> LLMConfig {
+        var result = config
+        if result.model.trimmingCharacters(in: .whitespaces).isEmpty {
+            result.model = config.provider.defaultModel
+        }
+        if result.baseURL.trimmingCharacters(in: .whitespaces).isEmpty {
+            result.baseURL = config.provider.defaultBaseURL
+        }
+        return result
     }
 
     /// 测试 LLM 连接
@@ -184,7 +201,7 @@ class SettingsViewModel: ObservableObject {
         // 这里调用 LLM 服务进行测试
         // 简单发送一个测试消息
         do {
-            let service = LLMServiceFactory.create(for: config)
+            let service = LLMServiceFactory.create(for: sanitized(config))
             let response = try await service.sendMessage("你好，请回复'连接成功'")
             return .success(response)
         } catch {
