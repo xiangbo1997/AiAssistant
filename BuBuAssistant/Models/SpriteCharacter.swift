@@ -95,10 +95,10 @@ enum DragAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .search: return "🔍 智能搜索"
-        case .translate: return "🌐 翻译"
-        case .addNote: return "📝 添加便签"
-        case .memo: return "🔐 备忘"
+        case .search: return "智能搜索"
+        case .translate: return "翻译"
+        case .addNote: return "添加便签"
+        case .memo: return "备忘"
         }
     }
 

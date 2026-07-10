@@ -167,7 +167,9 @@ struct SpriteContainerView: View {
                     onAction: { action in
                         // 对于翻译操作，先保存文字再执行
                         let textToProcess = spriteViewModel.droppedText
-                        spriteViewModel.showActionMenu = false
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            spriteViewModel.showActionMenu = false
+                        }
 
                         if action == .translate {
                             // 翻译操作：直接在气泡中显示结果
@@ -182,7 +184,11 @@ struct SpriteContainerView: View {
                         spriteViewModel.cancelAction()
                     }
                 )
-                .transition(.scale.combined(with: .opacity))
+                // 从精灵处弹出，与说话气泡同一套动效语言
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.5, anchor: .bottom).combined(with: .opacity),
+                    removal: .opacity
+                ))
             }
         }
         .frame(width: 280, height: 400)
@@ -386,21 +392,30 @@ struct ActionMenuView: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             // 预览文本
-            Text(droppedText.prefix(50) + (droppedText.count > 50 ? "..." : ""))
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(.ultraThinMaterial)
-                )
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "text.quote")
+                    .font(.system(size: 11))
+                    .foregroundColor(BuBuColors.skyBlue)
+                    .padding(.top, 2)
+
+                Text(droppedText.prefix(50) + (droppedText.count > 50 ? "..." : ""))
+                    .font(BuBuFonts.tiny)
+                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.65))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: BuBuShapes.smallRadius)
+                    .fill(Color.white)
+            )
 
             // 动作按钮
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
                 ForEach(DragAction.allCases, id: \.self) { action in
                     ActionButton(action: action) {
                         onAction(action)
@@ -409,18 +424,28 @@ struct ActionMenuView: View {
             }
 
             // 取消按钮
-            Button("取消") {
+            Button {
                 onCancel()
+            } label: {
+                Text("取消")
+                    .font(BuBuFonts.caption)
+                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(BuBuColors.chocolateBrown.opacity(0.06))
+                    )
             }
-            .font(.caption)
-            .foregroundColor(.secondary)
+            .buttonStyle(.plain)
         }
-        .padding(16)
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
+            RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
+                .fill(BuBuColors.creamWhite)
+                .shadow(color: BuBuColors.chocolateBrown.opacity(0.18), radius: 14, x: 0, y: 7)
         )
+        .padding(.horizontal, 4)
     }
 }
 
@@ -434,28 +459,42 @@ struct ActionButton: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 4) {
-                Image(systemName: action.icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(isHovered ? .white : .primary)
+            VStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(isHovered ? action.themeColor : action.themeColor.opacity(0.14))
+                        .frame(width: 34, height: 34)
 
-                Text(action.title.replacingOccurrences(of: "🔍 ", with: "")
-                    .replacingOccurrences(of: "🌐 ", with: "")
-                    .replacingOccurrences(of: "📝 ", with: ""))
-                    .font(.caption2)
-                    .foregroundColor(isHovered ? .white : .secondary)
+                    Image(systemName: action.icon)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(isHovered ? .white : action.themeColor)
+                }
+
+                Text(action.title)
+                    .font(BuBuFonts.tiny)
+                    .foregroundColor(BuBuColors.chocolateBrown.opacity(isHovered ? 0.9 : 0.65))
             }
-            .frame(width: 60, height: 50)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isHovered ? Color.accentColor : Color.clear)
-            )
+            .frame(width: 56, height: 58)
+            .contentShape(Rectangle())
+            .scaleEffect(isHovered ? 1.06 : 1.0)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
                 isHovered = hovering
             }
+        }
+    }
+}
+
+// 动作按钮的主题色映射（表现层职责，不进模型）
+private extension DragAction {
+    var themeColor: Color {
+        switch self {
+        case .search: return BuBuColors.skyBlue
+        case .translate: return BuBuColors.mintGreen
+        case .addNote: return BuBuColors.peachBlush
+        case .memo: return BuBuColors.lavender
         }
     }
 }

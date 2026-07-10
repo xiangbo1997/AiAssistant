@@ -265,7 +265,9 @@ class SpriteViewModel: ObservableObject {
     func handleDrop(text: String) {
         isDragOver = false
         droppedText = text
-        showActionMenu = true
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            showActionMenu = true
+        }
         animationState = .happy
 
         // 显示提示气泡
@@ -537,7 +539,9 @@ class SpriteViewModel: ObservableObject {
 
     /// 执行拖拽动作
     func executeAction(_ action: DragAction) {
-        showActionMenu = false
+        withAnimation(.easeOut(duration: 0.15)) {
+            showActionMenu = false
+        }
         hideBubble()
 
         switch action {
@@ -569,7 +573,9 @@ class SpriteViewModel: ObservableObject {
 
     /// 取消动作
     func cancelAction() {
-        showActionMenu = false
+        withAnimation(.easeOut(duration: 0.15)) {
+            showActionMenu = false
+        }
         droppedText = ""
         hideBubble()
         startIdleAnimation()
