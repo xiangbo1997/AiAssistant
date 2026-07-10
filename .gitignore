@@ -22,3 +22,9 @@ Package.resolved
 # Secrets (never commit API keys)
 *.env
 .env.local
+
+# 构建产物与分发包
+dist/
+
+# 代码索引缓存
+.codegraph/
