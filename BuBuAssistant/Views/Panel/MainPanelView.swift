@@ -114,10 +114,10 @@ struct TabButton: View {
                 RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
                     .fill(isSelected ? BuBuColors.skyBlue : Color.white.opacity(0.6))
                     .shadow(
-                        color: isSelected ? BuBuColors.skyBlue.opacity(0.35) : Color.clear,
-                        radius: 10,
+                        color: isSelected ? BuBuColors.skyBlue.opacity(0.35) : BuBuColors.chocolateBrown.opacity(0.05),
+                        radius: isSelected ? 10 : 4,
                         x: 0,
-                        y: 5
+                        y: isSelected ? 5 : 2
                     )
             )
             .scaleEffect(isSelected ? 1.02 : 1.0)

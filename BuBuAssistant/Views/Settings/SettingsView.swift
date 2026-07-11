@@ -103,6 +103,7 @@ struct CharacterSettingsView: View {
     @EnvironmentObject var viewModel: SettingsViewModel
     @EnvironmentObject var spriteViewModel: SpriteViewModel
     @State private var showingImagePicker = false
+    @State private var importError: String?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -164,9 +165,17 @@ struct CharacterSettingsView: View {
                 if let url = urls.first {
                     addCustomCharacter(from: url)
                 }
-            case .failure:
-                break // 导入失败，静默处理
+            case .failure(let error):
+                importError = "无法读取所选图片：\(error.localizedDescription)"
             }
+        }
+        .alert("添加角色失败", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("好", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
         }
     }
 
@@ -174,6 +183,7 @@ struct CharacterSettingsView: View {
         // 复制图片到应用支持目录
         let fileManager = FileManager.default
         guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            importError = "无法访问应用数据目录"
             return
         }
 
@@ -196,7 +206,7 @@ struct CharacterSettingsView: View {
                 viewModel.currentCharacter = newCharacter
             }
         } catch {
-            // 保存失败，静默处理
+            importError = "保存图片失败：\(error.localizedDescription)"
         }
     }
 }
@@ -421,7 +431,7 @@ struct AISettingsView: View {
                     if let result = testResult {
                         Text(result)
                             .font(.caption)
-                            .foregroundColor(result.contains("成功") ? .green : .red)
+                            .foregroundColor(result.contains("成功") ? BuBuColors.mintGreen : BuBuColors.coralPink)
                     }
                 }
             }
@@ -644,11 +654,18 @@ struct ShortcutRow: View {
 // MARK: - 关于
 
 struct AboutView: View {
+    @State private var diagnosticsCopied = false
+
+    /// 应用版本号（取自 Info.plist）
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
 
-            // 应用图标 - 使用布布形象
+            // 应用图标 - 使用布布真实形象
             ZStack {
                 Circle()
                     .fill(
@@ -661,9 +678,10 @@ struct AboutView: View {
                     .frame(width: 100, height: 100)
                     .shadow(color: BuBuColors.coralPink.opacity(0.3), radius: 20, x: 0, y: 10)
 
-                Image(systemName: "sparkles")
-                    .font(.system(size: 48))
-                    .foregroundColor(.white)
+                Image("bubu")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 74, height: 74)
             }
 
             // 应用名称
@@ -672,7 +690,7 @@ struct AboutView: View {
                 .foregroundColor(BuBuColors.chocolateBrown)
 
             // 版本信息
-            Text("版本 1.0.0")
+            Text("版本 \(appVersion)")
                 .font(BuBuFonts.body)
                 .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
 
@@ -685,38 +703,25 @@ struct AboutView: View {
             Divider()
                 .frame(width: 200)
 
-            // 链接
-            VStack(spacing: 12) {
-                Link(destination: URL(string: "https://github.com")!) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "link")
-                        Text("GitHub")
-                    }
-                    .font(BuBuFonts.body)
-                    .foregroundColor(BuBuColors.skyBlue)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
-                            .fill(BuBuColors.skyBlue.opacity(0.1))
-                    )
+            // 诊断信息（反馈问题时可复制粘贴，替代无效的占位链接）
+            Button {
+                copyDiagnostics()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: diagnosticsCopied ? "checkmark" : "doc.on.doc")
+                    Text(diagnosticsCopied ? "已复制" : "复制诊断信息")
                 }
-
-                Link(destination: URL(string: "https://github.com")!) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.bubble")
-                        Text("反馈问题")
-                    }
-                    .font(BuBuFonts.body)
-                    .foregroundColor(BuBuColors.lavender)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
-                            .fill(BuBuColors.lavender.opacity(0.1))
-                    )
-                }
+                .font(BuBuFonts.body)
+                .foregroundColor(diagnosticsCopied ? BuBuColors.mintGreen : BuBuColors.skyBlue)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: BuBuShapes.buttonRadius)
+                        .fill(BuBuColors.skyBlue.opacity(0.1))
+                )
             }
+            .buttonStyle(.plain)
+            .help("复制版本与系统信息，方便反馈问题")
 
             Spacer()
 
@@ -733,6 +738,22 @@ struct AboutView: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BuBuColors.creamWhite)
+    }
+
+    /// 复制诊断信息（版本 + 系统），方便用户反馈问题时提供环境
+    private func copyDiagnostics() {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let info = """
+        布布助手 \(appVersion)
+        macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(info, forType: .string)
+
+        diagnosticsCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            diagnosticsCopied = false
+        }
     }
 }
 
