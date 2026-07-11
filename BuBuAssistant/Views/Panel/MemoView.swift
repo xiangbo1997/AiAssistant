@@ -12,13 +12,16 @@ struct MemoView: View {
     @StateObject private var memoService = MemoService.shared
     @State private var searchText = ""
     @State private var selectedType: MemoType? = nil
+    @State private var showFavoritesOnly = false
     @State private var showingAddMemo = false
-    @State private var showingUnlock = true
     @State private var password = ""
     @State private var confirmPassword = ""
-    @State private var isSettingPassword = false
     @State private var unlockError = false
     @State private var showPassword = false
+    @FocusState private var passwordFocused: Bool
+
+    /// 首次使用（未设过密码）走「设置密码」，否则走「解锁」；直接由 service 状态派生
+    private var isSettingPassword: Bool { !memoService.hasPassword }
 
     var body: some View {
         Group {
@@ -27,9 +30,6 @@ struct MemoView: View {
             } else {
                 mainContentView
             }
-        }
-        .onAppear {
-            isSettingPassword = !memoService.hasPassword
         }
     }
 
@@ -82,13 +82,16 @@ struct MemoView: View {
                     text: $password,
                     showPassword: showPassword
                 )
+                .focused($passwordFocused)
+                .onSubmit { handleUnlock() }
 
                 if isSettingPassword {
                     passwordField(
-                        placeholder: "确认密码",
+                        placeholder: "确认密码（至少 6 位）",
                         text: $confirmPassword,
                         showPassword: showPassword
                     )
+                    .onSubmit { handleUnlock() }
                 }
 
                 // 显示密码切换
@@ -117,7 +120,7 @@ struct MemoView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 12))
-                    Text(isSettingPassword ? "两次密码不一致" : "密码错误，请重试")
+                    Text(unlockErrorMessage)
                         .font(BuBuFonts.caption)
                 }
                 .foregroundColor(BuBuColors.coralPink)
@@ -168,7 +171,11 @@ struct MemoView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BuBuColors.warmGradient)
+        .onAppear { passwordFocused = true }
     }
+
+    /// 解锁失败的具体原因文案
+    @State private var unlockErrorMessage = "密码错误，请重试"
 
     private func passwordField(placeholder: String, text: Binding<String>, showPassword: Bool) -> some View {
         HStack(spacing: 12) {
@@ -200,7 +207,13 @@ struct MemoView: View {
         unlockError = false
 
         if isSettingPassword {
+            guard password.count >= 6 else {
+                unlockErrorMessage = "密码至少需要 6 位"
+                unlockError = true
+                return
+            }
             guard password == confirmPassword else {
+                unlockErrorMessage = "两次密码不一致"
                 unlockError = true
                 return
             }
@@ -208,12 +221,15 @@ struct MemoView: View {
                 password = ""
                 confirmPassword = ""
             } else {
+                unlockErrorMessage = "设置密码失败，请重试"
                 unlockError = true
             }
         } else {
+            guard !password.isEmpty else { return }
             if memoService.unlock(with: password) {
                 password = ""
             } else {
+                unlockErrorMessage = "密码错误，请重试"
                 unlockError = true
             }
         }
@@ -315,10 +331,11 @@ struct MemoView: View {
                     title: "全部",
                     icon: "tray.full",
                     color: BuBuColors.chocolateBrown,
-                    isSelected: selectedType == nil,
+                    isSelected: selectedType == nil && !showFavoritesOnly,
                     count: memoService.memos.count
                 ) {
                     selectedType = nil
+                    showFavoritesOnly = false
                 }
 
                 // 收藏
@@ -326,10 +343,11 @@ struct MemoView: View {
                     title: "收藏",
                     icon: "star.fill",
                     color: BuBuColors.sunshineYellow,
-                    isSelected: false,
+                    isSelected: showFavoritesOnly,
                     count: memoService.favorites.count
                 ) {
-                    // 特殊处理收藏筛选
+                    showFavoritesOnly.toggle()
+                    if showFavoritesOnly { selectedType = nil }
                 }
 
                 // 各类型
@@ -342,6 +360,7 @@ struct MemoView: View {
                         count: memoService.memos.filter { $0.type == type }.count
                     ) {
                         selectedType = type
+                        showFavoritesOnly = false
                     }
                 }
             }
@@ -392,6 +411,13 @@ struct MemoView: View {
                         .fill(BuBuColors.lavender)
                 )
                 .buttonStyle(.plain)
+            } else {
+                Button("清除搜索") {
+                    searchText = ""
+                }
+                .font(BuBuFonts.caption)
+                .foregroundColor(BuBuColors.skyBlue)
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -439,25 +465,22 @@ struct MemoView: View {
     // MARK: - 辅助方法
 
     private var filteredMemos: [MemoItem] {
-        var result = memoService.memos
+        // 单一过滤链：搜索 → 收藏 → 类型 → 排序
+        var result = searchText.isEmpty ? memoService.memos : memoService.search(searchText)
 
+        if showFavoritesOnly {
+            result = result.filter { $0.isFavorite }
+        }
         if let type = selectedType {
             result = result.filter { $0.type == type }
-        }
-
-        if !searchText.isEmpty {
-            result = memoService.search(searchText)
-            if let type = selectedType {
-                result = result.filter { $0.type == type }
-            }
         }
 
         return result.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     private func copyToClipboard(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        // 备忘内容多为敏感信息，走敏感剪贴板（标记保密 + 60 秒自动清空）
+        SensitiveClipboard.copy(text)
     }
 }
 
@@ -495,7 +518,7 @@ struct FilterChip: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 20)
+                Capsule()
                     .fill(isSelected ? color : color.opacity(0.1))
             )
         }
@@ -512,11 +535,18 @@ struct MemoRowView: View {
     @State private var showContent = false
     @State private var copied = false
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
     var body: some View {
         HStack(spacing: 14) {
             // 类型图标
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: BuBuShapes.smallRadius)
                     .fill(memo.type.color.opacity(0.15))
                     .frame(width: 42, height: 42)
 
@@ -565,19 +595,21 @@ struct MemoRowView: View {
                     }
                 }
 
-                // 标签
-                if !memo.tags.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(memo.tags.prefix(3), id: \.self) { tag in
-                            Text(tag)
-                                .font(BuBuFonts.tiny)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(memo.type.color.opacity(0.12))
-                                .foregroundColor(memo.type.color)
-                                .cornerRadius(6)
-                        }
+                // 标签与更新时间
+                HStack(spacing: 6) {
+                    ForEach(memo.tags.prefix(3), id: \.self) { tag in
+                        Text(tag)
+                            .font(BuBuFonts.tiny)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(memo.type.color.opacity(0.12))
+                            .foregroundColor(memo.type.color)
+                            .clipShape(Capsule())
                     }
+
+                    Text(Self.relativeFormatter.localizedString(for: memo.updatedAt, relativeTo: Date()))
+                        .font(BuBuFonts.tiny)
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.4))
                 }
             }
 
@@ -608,16 +640,22 @@ struct MemoRowView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(14)
+        .padding(.vertical, 14)
+        .padding(.leading, 20)
+        .padding(.trailing, 14)
         .background(
             RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
                 .fill(Color.white)
                 .shadow(color: BuBuColors.chocolateBrown.opacity(0.08), radius: 10, x: 0, y: 4)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
-                .stroke(memo.type.color.opacity(0.2), lineWidth: 1)
-        )
+        // 左侧类型强调竖条（与便签卡片一致的视觉语言）
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(memo.type.color)
+                .frame(width: 4)
+                .padding(.vertical, 12)
+                .padding(.leading, 7)
+        }
         .onTapGesture {
             showingEditor = true
         }
@@ -629,8 +667,7 @@ struct MemoRowView: View {
     }
 
     private func copyContent() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(memo.content, forType: .string)
+        SensitiveClipboard.copy(memo.content)
         memoService.recordUsage(memo)
 
         copied = true

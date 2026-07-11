@@ -93,6 +93,21 @@ struct MemoEditorView: View {
         }
         .frame(width: 420, height: 560)
         .background(BuBuColors.warmGradient)
+        .background {
+            // 键盘快捷键：Esc 取消、Cmd+Return 保存（隐藏按钮承接，不占布局）
+            Button("", action: { dismiss() })
+                .keyboardShortcut(.cancelAction)
+                .hidden()
+            Button("") { if canSave { save() } }
+                .keyboardShortcut(.return, modifiers: .command)
+                .hidden()
+        }
+    }
+
+    /// 是否满足保存条件（标题与内容非空）
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !content.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - 标题栏

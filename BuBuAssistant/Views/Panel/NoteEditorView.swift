@@ -210,9 +210,18 @@ struct NoteDTOEditorView: View {
                 }
                 .padding(20)
             }
-            .background(BuBuColors.creamWhite)
         }
         .frame(width: 420, height: 520)
+        .background(BuBuColors.warmGradient)
+        .background {
+            // 键盘快捷键：Esc 取消、Cmd+Return 保存
+            Button("", action: { dismiss() })
+                .keyboardShortcut(.cancelAction)
+                .hidden()
+            Button("") { if !title.isEmpty { saveNote() } }
+                .keyboardShortcut(.return, modifiers: .command)
+                .hidden()
+        }
     }
 
     // MARK: - 标题栏
@@ -322,7 +331,7 @@ struct TagChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            Capsule()
                 .fill(BuBuColors.skyBlue.opacity(0.15))
         )
     }

@@ -764,5 +764,5 @@ struct Sprite3DView: View {
 #Preview {
     Sprite3DView(viewModel: SpriteViewModel())
         .frame(width: 280, height: 400)
-        .background(Color.gray.opacity(0.1))
+        .background(BuBuColors.softCloud)
 }

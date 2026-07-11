@@ -71,6 +71,8 @@ class GuidanceViewModel: ObservableObject {
     /// 截图并提问（新会话首问或"完成了，看下一步"都走这里）
     func askWithScreenshot(question: String) async {
         guard !isStreaming, !isCapturing else { return }
+        // 先校验配置：避免截图、写入用户气泡后才发现没配 Key，留下无回应的对话
+        guard configValid() else { return }
         errorMessage = nil
         isCapturing = true
 
@@ -109,12 +111,28 @@ class GuidanceViewModel: ObservableObject {
     func askFollowUp(question: String) async {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isStreaming, !trimmed.isEmpty, hasSession else { return }
+        // 先校验配置，避免留下无回应的用户气泡
+        guard configValid() else { return }
         errorMessage = nil
 
         history.append(ChatMessage(role: .user, content: trimmed))
         entries.append(GuidanceEntry(role: .user, text: trimmed, hasScreenshot: false))
 
         await streamReply()
+    }
+
+    /// 校验当前 LLM 配置是否可用（API Key 或 Ollama + 视觉支持），失败时设置错误信息
+    private func configValid() -> Bool {
+        let config = SettingsViewModel.shared.currentLLMConfig
+        guard !config.apiKey.isEmpty || config.provider == .ollama else {
+            errorMessage = "请先在设置中配置 \(config.provider.displayName) 的 API Key"
+            return false
+        }
+        guard config.provider.supportsVision else {
+            errorMessage = LLMError.visionNotSupported.errorDescription
+            return false
+        }
+        return true
     }
 
     /// 语音输入开关：录音中则停止，否则申请权限并开始识别

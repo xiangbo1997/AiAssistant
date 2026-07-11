@@ -90,7 +90,7 @@ struct BuBuShadows {
     )
 
     static let subtle = ShadowStyle(
-        color: Color.black.opacity(0.06),
+        color: BuBuColors.chocolateBrown.opacity(0.06),
         radius: 6,
         x: 0,
         y: 3

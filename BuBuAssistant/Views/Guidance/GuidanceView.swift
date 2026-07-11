@@ -35,8 +35,16 @@ struct GuidanceView: View {
                 .shadow(color: BuBuColors.chocolateBrown.opacity(0.18), radius: 20, x: 0, y: 10)
         )
         .onAppear {
-            hasPermission = ScreenshotService.shared.hasScreenCapturePermission()
+            refreshPermission()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // 用户去系统设置授权后切回应用，实时刷新权限 banner
+            refreshPermission()
+        }
+    }
+
+    private func refreshPermission() {
+        hasPermission = ScreenshotService.shared.hasScreenCapturePermission()
     }
 
     // MARK: - 头部
@@ -274,7 +282,14 @@ struct GuidanceView: View {
                 .font(BuBuFonts.body)
                 .foregroundColor(BuBuColors.chocolateBrown)
                 .bubuInput()
-                .onSubmit { sendFollowUp() }
+                .onSubmit {
+                    // 已有会话时回车追问；首轮回车直接发起截图提问，避免文字无处可去
+                    if viewModel.hasSession {
+                        sendFollowUp()
+                    } else {
+                        captureAndAsk()
+                    }
+                }
 
                 // 语音输入：点击开始识别（实时转文字到输入框），再点停止
                 Button {
@@ -337,8 +352,9 @@ struct GuidanceView: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.isStreaming || viewModel.isCapturing)
-            .opacity(viewModel.isStreaming || viewModel.isCapturing ? 0.6 : 1)
+            .disabled(viewModel.isStreaming || viewModel.isCapturing || !hasPermission)
+            .opacity(viewModel.isStreaming || viewModel.isCapturing || !hasPermission ? 0.6 : 1)
+            .help(hasPermission ? "" : "需要先授予「屏幕录制」权限")
 
             // 次要操作与隐私提示
             HStack {
@@ -400,5 +416,5 @@ struct GuidanceView: View {
 #Preview {
     GuidanceView(viewModel: GuidanceViewModel(), onClose: {})
         .padding(20)
-        .background(Color.gray.opacity(0.2))
+        .background(BuBuColors.softCloud)
 }

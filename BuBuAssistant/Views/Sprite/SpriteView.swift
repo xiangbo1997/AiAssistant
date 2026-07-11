@@ -605,5 +605,5 @@ struct ThinkingDotsView: View {
 #Preview {
     SpriteView(viewModel: SpriteViewModel())
         .frame(width: 220, height: 320)
-        .background(Color.gray.opacity(0.1))
+        .background(BuBuColors.softCloud)
 }

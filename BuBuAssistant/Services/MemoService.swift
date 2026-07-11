@@ -8,6 +8,7 @@
 
 import Foundation
 import CryptoKit
+import CommonCrypto
 import Security
 
 class MemoService: ObservableObject {
@@ -18,6 +19,8 @@ class MemoService: ObservableObject {
 
     private let storageKey = "bubu_memos_encrypted"
     private let saltKey = "bubu_memos_salt"
+    /// KDF 版本标记：区分旧的 SHA256 迭代与新的 PBKDF2，用于无感迁移
+    private let kdfVersionKey = "bubu_memos_kdf_version"
     private var encryptionKey: SymmetricKey?
 
     private init() {
@@ -28,24 +31,52 @@ class MemoService: ObservableObject {
 
     /// 使用密码解锁备忘录
     func unlock(with password: String) -> Bool {
-        guard let key = deriveKey(from: password) else { return false }
+        guard let salt = UserDefaults.standard.data(forKey: saltKey) else { return false }
 
-        encryptionKey = key
-
-        if loadMemos() {
+        // 数据为空的历史遗留（有盐值但从未存过库）：直接用新算法初始化
+        guard let encrypted = UserDefaults.standard.data(forKey: storageKey) else {
+            guard let key = Self.pbkdf2Key(password: password, salt: salt, rounds: pbkdf2Rounds) else { return false }
+            encryptionKey = key
+            memos = []
+            UserDefaults.standard.set(kdfVersionCurrent, forKey: kdfVersionKey)
+            saveMemos()
             isLocked = false
             return true
+        }
+
+        let version = UserDefaults.standard.integer(forKey: kdfVersionKey)
+        // version 0 = 旧的 SHA256 迭代格式；version 1 = PBKDF2
+        let key: SymmetricKey?
+        if version >= kdfVersionCurrent {
+            key = Self.pbkdf2Key(password: password, salt: salt, rounds: pbkdf2Rounds)
         } else {
-            // 如果没有数据，说明是首次使用，创建空数据
-            if UserDefaults.standard.data(forKey: storageKey) == nil {
-                memos = []
-                saveMemos()
-                isLocked = false
-                return true
-            }
+            key = Self.legacySHA256Key(password: password, salt: salt)
+        }
+        guard let key else { return false }
+
+        encryptionKey = key
+        guard loadMemos(from: encrypted) else {
             encryptionKey = nil
             return false
         }
+
+        // 旧格式解锁成功后无感迁移到 PBKDF2（用同一密码重派生新密钥并重加密）
+        if version < kdfVersionCurrent {
+            migrateToPBKDF2(password: password)
+        }
+
+        isLocked = false
+        return true
+    }
+
+    /// 旧库迁移：重生成盐值 + PBKDF2 密钥，用新密钥重新加密落盘
+    private func migrateToPBKDF2(password: String) {
+        let newSalt = Self.randomBytes(count: 32)
+        guard let newKey = Self.pbkdf2Key(password: password, salt: newSalt, rounds: pbkdf2Rounds) else { return }
+        UserDefaults.standard.set(newSalt, forKey: saltKey)
+        UserDefaults.standard.set(kdfVersionCurrent, forKey: kdfVersionKey)
+        encryptionKey = newKey
+        saveMemos()
     }
 
     /// 锁定备忘录
@@ -57,21 +88,17 @@ class MemoService: ObservableObject {
 
     /// 修改密码
     func changePassword(from oldPassword: String, to newPassword: String) -> Bool {
-        guard let oldKey = deriveKey(from: oldPassword) else { return false }
+        // 已解锁状态下改密码：直接用当前内存中的 memos 重加密即可
+        guard !isLocked else { return false }
 
-        // 验证旧密码
-        let testKey = encryptionKey
-        encryptionKey = oldKey
-        guard loadMemos() else {
-            encryptionKey = testKey
+        // 用新密码重新派生（生成新盐值），落盘
+        let newSalt = Self.randomBytes(count: 32)
+        guard let newKey = Self.pbkdf2Key(password: newPassword, salt: newSalt, rounds: pbkdf2Rounds) else {
             return false
         }
 
-        // 使用新密码重新加密
-        guard let newKey = deriveKey(from: newPassword, regenerateSalt: true) else {
-            return false
-        }
-
+        UserDefaults.standard.set(newSalt, forKey: saltKey)
+        UserDefaults.standard.set(kdfVersionCurrent, forKey: kdfVersionKey)
         encryptionKey = newKey
         saveMemos()
         return true
@@ -85,8 +112,12 @@ class MemoService: ObservableObject {
     /// 设置初始密码（首次使用）
     func setInitialPassword(_ password: String) -> Bool {
         guard !hasPassword else { return false }
-        guard let key = deriveKey(from: password, regenerateSalt: true) else { return false }
 
+        let salt = Self.randomBytes(count: 32)
+        guard let key = Self.pbkdf2Key(password: password, salt: salt, rounds: pbkdf2Rounds) else { return false }
+
+        UserDefaults.standard.set(salt, forKey: saltKey)
+        UserDefaults.standard.set(kdfVersionCurrent, forKey: kdfVersionKey)
         encryptionKey = key
         memos = []
         saveMemos()
@@ -167,35 +198,50 @@ class MemoService: ObservableObject {
 
     // MARK: - 加密存储
 
-    private func deriveKey(from password: String, regenerateSalt: Bool = false) -> SymmetricKey? {
-        var salt: Data
+    /// PBKDF2 迭代次数（OWASP 对 PBKDF2-HMAC-SHA256 的推荐下限量级）
+    private let pbkdf2Rounds: UInt32 = 210_000
+    /// 当前 KDF 版本（1 = PBKDF2；0/缺失 = 旧 SHA256 迭代）
+    private let kdfVersionCurrent = 1
 
-        if regenerateSalt {
-            // 生成新的盐值
-            salt = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-            UserDefaults.standard.set(salt, forKey: saltKey)
-        } else {
-            // 使用已存储的盐值
-            guard let storedSalt = UserDefaults.standard.data(forKey: saltKey) else {
-                // 首次使用，生成盐值
-                salt = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-                UserDefaults.standard.set(salt, forKey: saltKey)
-                return nil
-            }
-            salt = storedSalt
-        }
-
-        // 使用 PBKDF2 风格的密钥派生（简化版）
-        let passwordData = Data(password.utf8)
-        let combined = passwordData + salt
-
-        // 使用 SHA256 多次哈希来增加计算成本
+    /// 旧格式密钥派生：SHA256(password+salt) 迭代 10000 次。仅用于解密迁移旧库
+    private static func legacySHA256Key(password: String, salt: Data) -> SymmetricKey? {
+        let combined = Data(password.utf8) + salt
         var hash = SHA256.hash(data: combined)
         for _ in 0..<10000 {
             hash = SHA256.hash(data: Data(hash))
         }
-
         return SymmetricKey(data: Data(hash))
+    }
+
+    /// CSPRNG 随机字节
+    private static func randomBytes(count: Int) -> Data {
+        var bytes = [UInt8](repeating: 0, count: count)
+        _ = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        return Data(bytes)
+    }
+
+    /// PBKDF2-HMAC-SHA256 派生 32 字节对称密钥
+    private static func pbkdf2Key(password: String, salt: Data, rounds: UInt32) -> SymmetricKey? {
+        let passwordData = Data(password.utf8)
+        var derived = [UInt8](repeating: 0, count: 32)
+
+        let status = derived.withUnsafeMutableBytes { derivedBytes -> Int32 in
+            salt.withUnsafeBytes { saltBytes in
+                passwordData.withUnsafeBytes { passwordBytes in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        passwordBytes.bindMemory(to: Int8.self).baseAddress, passwordData.count,
+                        saltBytes.bindMemory(to: UInt8.self).baseAddress, salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        rounds,
+                        derivedBytes.bindMemory(to: UInt8.self).baseAddress, 32
+                    )
+                }
+            }
+        }
+
+        guard status == kCCSuccess else { return nil }
+        return SymmetricKey(data: Data(derived))
     }
 
     private func saveMemos() {
@@ -206,22 +252,19 @@ class MemoService: ObservableObject {
             let encrypted = try encrypt(data, using: key)
             UserDefaults.standard.set(encrypted, forKey: storageKey)
         } catch {
-            print("保存备忘录失败: \(error)")
+            // 保存失败静默处理，避免日志泄露备忘内容
         }
     }
 
-    private func loadMemos() -> Bool {
+    private func loadMemos(from encrypted: Data) -> Bool {
         guard let key = encryptionKey else { return false }
-        guard let encrypted = UserDefaults.standard.data(forKey: storageKey) else {
-            return false
-        }
 
         do {
             let decrypted = try decrypt(encrypted, using: key)
             memos = try JSONDecoder().decode([MemoItem].self, from: decrypted)
             return true
         } catch {
-            print("加载备忘录失败: \(error)")
+            // 解密失败通常意味着密码错误，不打印明文相关信息
             return false
         }
     }
