@@ -62,6 +62,10 @@ struct SceneKitView: NSViewRepresentable {
         private var headNode: SCNNode?
         private var eyesNode: SCNNode?
         private var tailNode: SCNNode?
+        private var armLNode: SCNNode?
+        private var armRNode: SCNNode?
+        private var footLNode: SCNNode?
+        private var footRNode: SCNNode?
 
         init(viewModel: SpriteViewModel) {
             scene = SCNScene()
@@ -161,6 +165,10 @@ struct SceneKitView: NSViewRepresentable {
             headNode = characterNode.childNode(withName: "bubu-head", recursively: true)
             eyesNode = characterNode.childNode(withName: "bubu-eyes", recursively: true)
             tailNode = characterNode.childNode(withName: "bubu-tail", recursively: true)
+            armLNode = characterNode.childNode(withName: "bubu-arm-l", recursively: true)
+            armRNode = characterNode.childNode(withName: "bubu-arm-r", recursively: true)
+            footLNode = characterNode.childNode(withName: "bubu-foot-l", recursively: true)
+            footRNode = characterNode.childNode(withName: "bubu-foot-r", recursively: true)
         }
 
         /// 角色切换：重建 3D 模型并重新挂载动画（此前切换角色 3D 模型不会更新）
@@ -183,7 +191,26 @@ struct SceneKitView: NSViewRepresentable {
         private func startMicroAnimations() {
             startBlinking()
             startTailWag()
+            startArmSway()
             startRandomGestures()
+        }
+
+        /// 待机摆臂：双臂随呼吸节奏轻微开合（左右反相更自然）
+        private func startArmSway() {
+            for (arm, phase) in [(armLNode, 0.0), (armRNode, 0.75)] {
+                guard let arm else { continue }
+
+                let direction: CGFloat = arm === armLNode ? 1 : -1
+                let swayOut = SCNAction.rotateBy(x: 0, y: 0, z: 0.10 * direction, duration: 1.5)
+                swayOut.timingMode = .easeInEaseOut
+                let swayIn = SCNAction.rotateBy(x: 0, y: 0, z: -0.10 * direction, duration: 1.5)
+                swayIn.timingMode = .easeInEaseOut
+
+                arm.runAction(.sequence([
+                    .wait(duration: phase),
+                    .repeatForever(.sequence([swayOut, swayIn]))
+                ]), forKey: "sway")
+            }
         }
 
         /// 眨眼：随机间隔 2.5~6 秒，偶尔连眨两次更传神
@@ -248,11 +275,56 @@ struct SceneKitView: NSViewRepresentable {
             // 睡眠/思考等状态有自己的身体语言，小动作只在待机与开心时插入
             guard currentAnimation == .idle || currentAnimation == .happy else { return }
 
-            switch Int.random(in: 0..<3) {
+            switch Int.random(in: 0..<5) {
             case 0: gestureHeadTilt()
             case 1: gestureLookAround()
+            case 2: gestureWave()
+            case 3: gestureKickFeet()
             default: gestureHop()
             }
+        }
+
+        /// 挥手打招呼：右臂举起晃两下再放下
+        private func gestureWave() {
+            guard let arm = armRNode else { return }
+
+            let raise = SCNAction.rotateBy(x: 0, y: 0, z: 1.7, duration: 0.3)
+            raise.timingMode = .easeOut
+            let waveOut = SCNAction.rotateBy(x: 0, y: 0, z: -0.35, duration: 0.18)
+            waveOut.timingMode = .easeInEaseOut
+            let waveIn = SCNAction.rotateBy(x: 0, y: 0, z: 0.35, duration: 0.18)
+            waveIn.timingMode = .easeInEaseOut
+            let lower = SCNAction.rotateBy(x: 0, y: 0, z: -1.7, duration: 0.35)
+            lower.timingMode = .easeInEaseOut
+
+            arm.runAction(.sequence([
+                raise,
+                waveOut, waveIn, waveOut, waveIn,
+                .wait(duration: 0.15),
+                lower
+            ]), forKey: "wave")
+        }
+
+        /// 开心踢腿：双脚交替向前踢两轮，像坐着晃腿
+        private func gestureKickFeet() {
+            guard let footL = footLNode, let footR = footRNode else { return }
+
+            func kick(_ foot: SCNNode, delay: TimeInterval) {
+                let kickUp = SCNAction.rotateBy(x: -0.55, y: 0, z: 0, duration: 0.16)
+                kickUp.timingMode = .easeOut
+                let kickDown = SCNAction.rotateBy(x: 0.55, y: 0, z: 0, duration: 0.20)
+                kickDown.timingMode = .easeInEaseOut
+
+                foot.runAction(.sequence([
+                    .wait(duration: delay),
+                    kickUp, kickDown,
+                    .wait(duration: 0.1),
+                    kickUp, kickDown
+                ]), forKey: "kick")
+            }
+
+            kick(footL, delay: 0)
+            kick(footR, delay: 0.22)
         }
 
         /// 歪头：侧倾片刻再回正，好奇的样子
@@ -307,6 +379,19 @@ struct SceneKitView: NSViewRepresentable {
                 jumpDown,
                 squash
             ]))
+
+            // 起跳时双臂欢快上扬，落地放下
+            for arm in [armLNode, armRNode] {
+                guard let arm else { continue }
+                let direction: CGFloat = arm === armLNode ? -1 : 1
+
+                let flapUp = SCNAction.rotateBy(x: 0, y: 0, z: 0.9 * direction, duration: 0.18)
+                flapUp.timingMode = .easeOut
+                let flapDown = SCNAction.rotateBy(x: 0, y: 0, z: -0.9 * direction, duration: 0.25)
+                flapDown.timingMode = .easeInEaseOut
+
+                arm.runAction(.sequence([flapUp, .wait(duration: 0.1), flapDown]), forKey: "flap")
+            }
         }
 
         // MARK: - 程序化环境贴图（IBL）
@@ -542,27 +627,38 @@ struct SceneKitView: NSViewRepresentable {
             mouth.scale = SCNVector3(1.5, 0.7, 0.5)
             head.addChildNode(mouth)
 
-            // 手臂 - 圆润短胖胶囊，向斜下外张（贴合 2D 里叉腰的短手），末端粉色圆爪
-            for (xOffset, zRotation) in [(CGFloat(-0.27), Float(0.7)), (CGFloat(0.27), Float(-0.7))] {
+            // 手臂 - 圆润短胖胶囊 + 末端圆爪，整组挂在肩部轴心节点下：
+            // 挥手/摆臂动画旋转肩部组节点，手臂绕肩膀转才自然（绕自身中心会像螺旋桨）
+            for side in [CGFloat(-1), CGFloat(1)] {
+                let shoulder = SCNNode()
+                shoulder.name = side < 0 ? "bubu-arm-l" : "bubu-arm-r"
+                shoulder.position = SCNVector3(side * 0.20, -0.05, 0.05)
+                model.addChildNode(shoulder)
+
                 let armGeometry = SCNCapsule(capRadius: 0.075, height: 0.20)
                 armGeometry.materials = [matteMaterial(style.body)]
                 let arm = SCNNode(geometry: armGeometry)
-                arm.position = SCNVector3(xOffset, -0.14, 0.06)
-                arm.eulerAngles = SCNVector3(0, 0, zRotation)
-                model.addChildNode(arm)
+                arm.position = SCNVector3(side * 0.07, -0.09, 0.01)
+                arm.eulerAngles = SCNVector3(0, 0, Float(side) * -0.7)
+                shoulder.addChildNode(arm)
 
-                // 粉色圆爪垫（套装手部）
+                // 圆爪垫（套装手部）
                 let paw = sphereNode(radius: 0.068, color: style.hood, segments: 24)
-                paw.position = SCNVector3(xOffset > 0 ? xOffset + 0.085 : xOffset - 0.085, -0.205, 0.07)
-                model.addChildNode(paw)
+                paw.position = SCNVector3(side * 0.155, -0.155, 0.02)
+                shoulder.addChildNode(paw)
             }
 
-            // 脚 - 白色套装小脚丫，明显朝前伸出（贴合 2D 里可见的圆脚掌）
-            for xOffset in [CGFloat(-0.135), CGFloat(0.135)] {
+            // 脚 - 套装小脚丫，明显朝前伸出；踝部轴心节点承接踢腿动画
+            for side in [CGFloat(-1), CGFloat(1)] {
+                let ankle = SCNNode()
+                ankle.name = side < 0 ? "bubu-foot-l" : "bubu-foot-r"
+                ankle.position = SCNVector3(side * 0.135, -0.52, 0.04)
+                model.addChildNode(ankle)
+
                 let foot = sphereNode(radius: 0.10, color: style.body, segments: 24)
-                foot.position = SCNVector3(xOffset, -0.54, 0.11)
+                foot.position = SCNVector3(0, -0.02, 0.07)
                 foot.scale = SCNVector3(1.0, 0.5, 1.45)  // 压扁拉长成脚掌形
-                model.addChildNode(foot)
+                ankle.addChildNode(foot)
             }
 
             // 尾巴 - 粉色圆钝小锥从身后翘起（待机时轻轻摇摆），尖端圆润更像玩偶尾
