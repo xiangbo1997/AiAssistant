@@ -256,7 +256,8 @@ struct SpriteContainerView: View {
         Menu("切换角色") {
             ForEach(spriteViewModel.allCharacters) { character in
                 Button {
-                    spriteViewModel.currentCharacter = character
+                    // 走 SettingsViewModel 持久化（重启保持），经 AppDelegate 管道同步回精灵
+                    settingsViewModel.currentCharacter = character
                 } label: {
                     HStack {
                         Text(character.name)
