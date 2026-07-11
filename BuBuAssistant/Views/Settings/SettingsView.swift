@@ -49,7 +49,7 @@ struct SettingsView: View {
                     Label("关于", systemImage: "info.circle")
                 }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 520, height: 480)
     }
 }
 
@@ -59,41 +59,94 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var viewModel: SettingsViewModel
 
     var body: some View {
-        Form {
-            Section("启动") {
-                Toggle("开机自动启动", isOn: $viewModel.launchAtLogin)
-                Toggle("隐藏 Dock 图标", isOn: $viewModel.hideDockIcon)
-            }
-
-            Section("精灵外观") {
-                HStack {
-                    Text("大小")
-                    Slider(value: $viewModel.spriteScale, in: 0.5...2.0, step: 0.1)
-                    Text("\(Int(viewModel.spriteScale * 100))%")
-                        .frame(width: 50)
+        ScrollView {
+            VStack(spacing: 16) {
+                // 启动
+                SettingsSection(title: "启动", icon: "power") {
+                    Toggle("开机自动启动", isOn: $viewModel.launchAtLogin)
+                        .tint(BuBuColors.skyBlue)
+                    Divider().opacity(0.5)
+                    Toggle("隐藏 Dock 图标", isOn: $viewModel.hideDockIcon)
+                        .tint(BuBuColors.skyBlue)
                 }
 
-                HStack {
-                    Text("透明度")
-                    Slider(value: $viewModel.spriteOpacity, in: 0.3...1.0, step: 0.1)
-                    Text("\(Int(viewModel.spriteOpacity * 100))%")
-                        .frame(width: 50)
+                // 精灵外观
+                SettingsSection(title: "精灵外观", icon: "sparkles") {
+                    sliderRow("大小", value: $viewModel.spriteScale, range: 0.5...2.0, step: 0.1) {
+                        "\(Int(viewModel.spriteScale * 100))%"
+                    }
+                    Divider().opacity(0.5)
+                    sliderRow("透明度", value: $viewModel.spriteOpacity, range: 0.3...1.0, step: 0.1) {
+                        "\(Int(viewModel.spriteOpacity * 100))%"
+                    }
+                    Divider().opacity(0.5)
+                    Toggle("启用动画", isOn: $viewModel.enableAnimation)
+                        .tint(BuBuColors.skyBlue)
                 }
 
-                Toggle("启用动画", isOn: $viewModel.enableAnimation)
-            }
-
-            Section("行为") {
-                HStack {
-                    Text("空闲睡眠延迟")
-                    Slider(value: $viewModel.sleepDelay, in: 60...600, step: 60)
-                    Text("\(Int(viewModel.sleepDelay / 60)) 分钟")
-                        .frame(width: 60)
+                // 行为
+                SettingsSection(title: "行为", icon: "clock") {
+                    sliderRow("空闲睡眠延迟", value: $viewModel.sleepDelay, range: 60...600, step: 60) {
+                        "\(Int(viewModel.sleepDelay / 60)) 分钟"
+                    }
                 }
             }
+            .padding(18)
         }
-        .formStyle(.grouped)
-        .padding()
+        .background(BuBuColors.creamWhite)
+    }
+
+    private func sliderRow(
+        _ label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        valueText: @escaping () -> String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(BuBuFonts.body)
+                .foregroundColor(BuBuColors.chocolateBrown)
+                .frame(width: 96, alignment: .leading)
+            Slider(value: value, in: range, step: step)
+                .tint(BuBuColors.skyBlue)
+            Text(valueText())
+                .font(BuBuFonts.caption)
+                .foregroundColor(BuBuColors.chocolateBrown.opacity(0.6))
+                .frame(width: 56, alignment: .trailing)
+        }
+    }
+}
+
+// MARK: - 设置区块容器（主题化替代系统 Form Section）
+
+struct SettingsSection<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(BuBuColors.skyBlue)
+                Text(title)
+                    .font(BuBuFonts.caption)
+                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.7))
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                content
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: BuBuShapes.cardRadius)
+                    .fill(Color.white)
+                    .shadow(color: BuBuColors.chocolateBrown.opacity(0.06), radius: 8, x: 0, y: 3)
+            )
+        }
     }
 }
 
@@ -437,7 +490,9 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
+        // 隐藏系统分组表的灰底（会跟随深色模式），铺布布奶油底融入主题
+        .scrollContentBackground(.hidden)
+        .background(BuBuColors.creamWhite)
         .onAppear {
             loadDrafts()
             loadAPIKey()
