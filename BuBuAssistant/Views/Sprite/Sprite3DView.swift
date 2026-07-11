@@ -20,7 +20,8 @@ struct SceneKitView: NSViewRepresentable {
         scnView.scene = context.coordinator.scene
         scnView.allowsCameraControl = false
         scnView.autoenablesDefaultLighting = false
-        scnView.antialiasingMode = .multisampling2X
+        // 4X 多重采样让软胶造型的曲面边缘更平滑（精灵尺寸小，开销可控）
+        scnView.antialiasingMode = .multisampling4X
 
         // 完全透明背景：仅设 backgroundColor 不够，必须显式声明图层非不透明，
         // 否则 SCNView 会渲染出一块不透明的深色矩形背景
@@ -91,38 +92,57 @@ struct SceneKitView: NSViewRepresentable {
             shadowGrow.timingMode = .easeInEaseOut
             shadow.runAction(.repeatForever(.sequence([shadowShrink, shadowGrow])))
 
-            // 创建相机
+            // 创建相机：略微抬高并俯视，露出头顶的棘刺背脊，也让姿态更立体
+            // （纯平视会把前后排列的棘刺压成一根）
             cameraNode = SCNNode()
             cameraNode.camera = SCNCamera()
-            cameraNode.position = SCNVector3(x: 0, y: 0, z: 3)
+            cameraNode.camera?.fieldOfView = 40  // 收窄视角减轻透视畸变，更接近贴纸的正投影观感
+            cameraNode.position = SCNVector3(x: 0, y: 0.45, z: 3.1)
+            cameraNode.look(at: SCNVector3(0, -0.05, 0))
             scene.rootNode.addChildNode(cameraNode)
 
-            // 添加环境光
+            // 基于图像的环境光照（IBL）：程序化暖色渐变作环境贴图，
+            // 让 PBR 材质表面产生柔和的环境反射与自然明暗过渡——
+            // 这是软胶质感的关键，纯 diffuse 靠打光做不出这种通透感
+            scene.lightingEnvironment.contents = Coordinator.makeEnvironmentImage()
+            scene.lightingEnvironment.intensity = 1.15
+
+            // 环境光：压低（IBL 已提供大部分环境照明），仅补一点暖色底光
             let ambientLight = SCNNode()
             ambientLight.light = SCNLight()
             ambientLight.light?.type = .ambient
-            ambientLight.light?.color = NSColor(red: 0.68, green: 0.65, blue: 0.62, alpha: 1.0)
+            ambientLight.light?.color = NSColor(red: 0.42, green: 0.40, blue: 0.38, alpha: 1.0)
             scene.rootNode.addChildNode(ambientLight)
 
-            // 添加主光源
-            // 性能：不开阴影——阴影需要每帧额外渲染 shadow map，地面阴影用
-            // 上面的静态圆片伪造，纯属赚到
+            // 主光源：柔和面光（area light）替代硬平行光，高光更柔、边缘过渡更自然
             let mainLight = SCNNode()
             mainLight.light = SCNLight()
             mainLight.light?.type = .directional
-            mainLight.light?.color = NSColor(white: 0.85, alpha: 1.0)
-            mainLight.position = SCNVector3(x: 2, y: 3, z: 2)
-            mainLight.look(at: SCNVector3(0, 0, 0))
+            mainLight.light?.color = NSColor(red: 1.0, green: 0.97, blue: 0.92, alpha: 1.0)
+            mainLight.light?.intensity = 850
+            mainLight.position = SCNVector3(x: 2.2, y: 3.2, z: 2.5)
+            mainLight.look(at: SCNVector3(0, -0.1, 0))
             scene.rootNode.addChildNode(mainLight)
 
-            // 添加补光（暖粉色调，衬托白色身体与粉帽兜；冷蓝补光会让白色显脏）
+            // 补光（暖粉色调，衬托白色身体与粉帽兜）
             let fillLight = SCNNode()
             fillLight.light = SCNLight()
             fillLight.light?.type = .directional
-            fillLight.light?.color = NSColor(red: 0.95, green: 0.80, blue: 0.78, alpha: 0.5)
-            fillLight.position = SCNVector3(x: -2, y: 1, z: 2)
+            fillLight.light?.color = NSColor(red: 0.98, green: 0.85, blue: 0.83, alpha: 1.0)
+            fillLight.light?.intensity = 350
+            fillLight.position = SCNVector3(x: -2.2, y: 0.8, z: 2.0)
             fillLight.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(fillLight)
+
+            // 轮廓光：从后上方勾一道冷色边光，把角色从背景里"托"出来，增强立体
+            let rimLight = SCNNode()
+            rimLight.light = SCNLight()
+            rimLight.light?.type = .directional
+            rimLight.light?.color = NSColor(red: 0.80, green: 0.86, blue: 0.98, alpha: 1.0)
+            rimLight.light?.intensity = 400
+            rimLight.position = SCNVector3(x: -1.0, y: 2.0, z: -2.5)
+            rimLight.look(at: SCNVector3(0, 0, 0))
+            scene.rootNode.addChildNode(rimLight)
 
             // 设置背景透明
             scene.background.contents = NSColor.clear
@@ -264,6 +284,27 @@ struct SceneKitView: NSViewRepresentable {
             ]))
         }
 
+        // MARK: - 程序化环境贴图（IBL）
+
+        /// 生成一张竖直渐变图作 PBR 环境光照：顶部暖白（天光）→ 中部柔粉 → 底部暖褐（地面反射）。
+        /// 用作 lightingEnvironment，为软胶材质提供通透的环境反射
+        static func makeEnvironmentImage() -> NSImage {
+            let size = NSSize(width: 8, height: 256)
+            let image = NSImage(size: size)
+            image.lockFocus()
+
+            let gradient = NSGradient(colorsAndLocations:
+                (NSColor(red: 1.0, green: 0.98, blue: 0.95, alpha: 1.0), 0.0),   // 顶部天光
+                (NSColor(red: 0.99, green: 0.90, blue: 0.90, alpha: 1.0), 0.45), // 中上柔粉
+                (NSColor(red: 0.85, green: 0.80, blue: 0.82, alpha: 1.0), 0.7),  // 中下微冷
+                (NSColor(red: 0.55, green: 0.48, blue: 0.46, alpha: 1.0), 1.0)   // 底部地面暖褐
+            )
+            gradient?.draw(in: NSRect(origin: .zero, size: size), angle: -90)
+
+            image.unlockFocus()
+            return image
+        }
+
         // MARK: - 创建角色节点
 
         static func createCharacterNode(for character: SpriteCharacter) -> SCNNode {
@@ -301,16 +342,22 @@ struct SceneKitView: NSViewRepresentable {
             static let eyeBrown = NSColor(red: 0.20, green: 0.13, blue: 0.10, alpha: 1.0)    // 眼睛深棕
         }
 
-        /// 柔和哑光材质（低高光，贴合绘本质感）
+        /// 软胶/绒毛质感 PBR 材质：高粗糙度 + 零金属度模拟毛绒公仔表面，
+        /// 配合场景的环境光照产生柔和的明暗过渡，消除塑料拼接感。
+        /// clearcoat 加一层极淡的透明涂层，制造软软的高光边缘
         private static func matteMaterial(_ color: NSColor) -> SCNMaterial {
             let material = SCNMaterial()
+            material.lightingModel = .physicallyBased
             material.diffuse.contents = color
-            material.specular.contents = NSColor(white: 1.0, alpha: 0.15)
-            material.shininess = 0.15
+            material.metalness.contents = 0.0
+            material.roughness.contents = 0.85          // 高粗糙 = 绒毛哑光
+            material.clearCoat.contents = 0.25          // 淡涂层高光，软胶质感
+            material.clearCoatRoughness.contents = 0.6
+            material.diffuse.mipFilter = .linear
             return material
         }
 
-        private static func sphereNode(radius: CGFloat, color: NSColor, segments: Int = 36) -> SCNNode {
+        private static func sphereNode(radius: CGFloat, color: NSColor, segments: Int = 48) -> SCNNode {
             let geometry = SCNSphere(radius: radius)
             geometry.segmentCount = segments
             geometry.materials = [matteMaterial(color)]
@@ -374,14 +421,17 @@ struct SceneKitView: NSViewRepresentable {
             patch.scale = SCNVector3(1.1, 1.3, 0.3)
             head.addChildNode(patch)
 
-            // 帽兜棘刺 - 三枚白色小角沿头顶向后排列
-            let spikeConfigs: [(position: SCNVector3, tiltX: Float, size: CGFloat)] = [
-                (SCNVector3(0, 0.44, 0.02), -0.15, 0.075),
-                (SCNVector3(0, 0.37, -0.20), -0.65, 0.062),
-                (SCNVector3(0, 0.23, -0.34), -1.10, 0.052)
+            // 帽兜棘刺 - 一排白色圆钝小角，从头顶前缘向后依次排列成锯齿背脊（布布恐龙装标志）。
+            // 每枚沿脸朝向的斜前上方指出、间距拉开，正面能看到错落的一排尖；
+            // topRadius>0 让尖端钝圆，像绒毛玩偶的软刺
+            let spikeConfigs: [(position: SCNVector3, tiltX: Float, radius: CGFloat, height: CGFloat)] = [
+                (SCNVector3(0, 0.47, 0.22), 0.75, 0.048, 0.14),   // 最前刺（大幅前倾，探出帽兜前额）
+                (SCNVector3(0, 0.54, 0.06), 0.38, 0.054, 0.17),   // 前中刺
+                (SCNVector3(0, 0.56, -0.11), 0.02, 0.052, 0.16),  // 顶刺（最高）
+                (SCNVector3(0, 0.49, -0.27), -0.45, 0.044, 0.12)  // 后刺
             ]
             for config in spikeConfigs {
-                let spikeGeometry = SCNCone(topRadius: 0, bottomRadius: config.size, height: config.size * 2.2)
+                let spikeGeometry = SCNCone(topRadius: config.radius * 0.3, bottomRadius: config.radius, height: config.height)
                 spikeGeometry.materials = [matteMaterial(BubuPalette.spikeWhite)]
                 let spike = SCNNode(geometry: spikeGeometry)
                 spike.position = config.position
@@ -425,30 +475,31 @@ struct SceneKitView: NSViewRepresentable {
             mouth.scale = SCNVector3(1.5, 0.7, 0.5)
             head.addChildNode(mouth)
 
-            // 手臂 - 白色小胶囊 + 粉色爪垫（套装袖口）
-            for (xOffset, zRotation) in [(CGFloat(-0.29), Float(0.5)), (CGFloat(0.29), Float(-0.5))] {
-                let armGeometry = SCNCapsule(capRadius: 0.06, height: 0.20)
+            // 手臂 - 圆润短胖胶囊，向斜下外张（贴合 2D 里叉腰的短手），末端粉色圆爪
+            for (xOffset, zRotation) in [(CGFloat(-0.27), Float(0.7)), (CGFloat(0.27), Float(-0.7))] {
+                let armGeometry = SCNCapsule(capRadius: 0.075, height: 0.20)
                 armGeometry.materials = [matteMaterial(BubuPalette.bodyWhite)]
                 let arm = SCNNode(geometry: armGeometry)
-                arm.position = SCNVector3(xOffset, -0.16, 0.04)
+                arm.position = SCNVector3(xOffset, -0.14, 0.06)
                 arm.eulerAngles = SCNVector3(0, 0, zRotation)
                 model.addChildNode(arm)
 
-                let paw = sphereNode(radius: 0.052, color: BubuPalette.hoodPink, segments: 20)
-                paw.position = SCNVector3(xOffset > 0 ? xOffset + 0.055 : xOffset - 0.055, -0.245, 0.05)
+                // 粉色圆爪垫（套装手部）
+                let paw = sphereNode(radius: 0.068, color: BubuPalette.hoodPink, segments: 24)
+                paw.position = SCNVector3(xOffset > 0 ? xOffset + 0.085 : xOffset - 0.085, -0.205, 0.07)
                 model.addChildNode(paw)
             }
 
-            // 脚 - 白色套装小脚
-            for xOffset in [CGFloat(-0.13), CGFloat(0.13)] {
-                let foot = sphereNode(radius: 0.09, color: BubuPalette.bodyWhite, segments: 24)
-                foot.position = SCNVector3(xOffset, -0.55, 0.04)
-                foot.scale = SCNVector3(1.0, 0.55, 1.25)
+            // 脚 - 白色套装小脚丫，明显朝前伸出（贴合 2D 里可见的圆脚掌）
+            for xOffset in [CGFloat(-0.135), CGFloat(0.135)] {
+                let foot = sphereNode(radius: 0.10, color: BubuPalette.bodyWhite, segments: 24)
+                foot.position = SCNVector3(xOffset, -0.54, 0.11)
+                foot.scale = SCNVector3(1.0, 0.5, 1.45)  // 压扁拉长成脚掌形
                 model.addChildNode(foot)
             }
 
-            // 尾巴 - 粉色小锥体从身后翘起（待机时轻轻摇摆）
-            let tailGeometry = SCNCone(topRadius: 0, bottomRadius: 0.09, height: 0.26)
+            // 尾巴 - 粉色圆钝小锥从身后翘起（待机时轻轻摇摆），尖端圆润更像玩偶尾
+            let tailGeometry = SCNCone(topRadius: 0.028, bottomRadius: 0.10, height: 0.24)
             tailGeometry.materials = [matteMaterial(BubuPalette.hoodPink)]
             let tail = SCNNode(geometry: tailGeometry)
             tail.name = "bubu-tail"
