@@ -92,6 +92,7 @@ enum DragAction: String, CaseIterable {
     case translate   // 翻译
     case addNote     // 添加便签
     case memo        // 备忘
+    case guidance    // 截图指导
 
     var title: String {
         switch self {
@@ -99,6 +100,7 @@ enum DragAction: String, CaseIterable {
         case .translate: return "翻译"
         case .addNote: return "添加便签"
         case .memo: return "备忘"
+        case .guidance: return "截图指导"
         }
     }
 
@@ -108,6 +110,7 @@ enum DragAction: String, CaseIterable {
         case .translate: return "globe"
         case .addNote: return "note.text.badge.plus"
         case .memo: return "key.fill"
+        case .guidance: return "camera.viewfinder"
         }
     }
 }

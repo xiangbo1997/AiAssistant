@@ -565,6 +565,11 @@ class SpriteViewModel: ObservableObject {
                 name: .showMemo,
                 object: droppedText
             )
+        case .guidance:
+            NotificationCenter.default.post(
+                name: .showGuidance,
+                object: nil
+            )
         }
 
         droppedText = ""

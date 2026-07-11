@@ -380,6 +380,9 @@ struct SpriteContainerView: View {
             onShowPanel?(.notes)
         case .memo:
             onShowPanel?(.memo)
+        case .guidance:
+            // 截图指导是独立窗口，已由 executeAction 发通知打开，此处无需切面板
+            break
         }
     }
 }
@@ -391,31 +394,41 @@ struct ActionMenuView: View {
     let onAction: (DragAction) -> Void
     let onCancel: () -> Void
 
+    /// 预览文本：折叠连续空白与换行为单个空格，截断到 50 字，避免多空白显得像空框
+    private var previewText: String {
+        let collapsed = droppedText
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return collapsed.count > 50 ? String(collapsed.prefix(50)) + "…" : collapsed
+    }
+
     var body: some View {
         VStack(spacing: 12) {
-            // 预览文本
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "text.quote")
-                    .font(.system(size: 11))
-                    .foregroundColor(BuBuColors.skyBlue)
-                    .padding(.top, 2)
+            // 预览文本（内容为空白时不显示，避免出现空框）
+            if !previewText.isEmpty {
+                HStack(alignment: .center, spacing: 6) {
+                    Image(systemName: "text.quote")
+                        .font(.system(size: 11))
+                        .foregroundColor(BuBuColors.skyBlue)
 
-                Text(droppedText.prefix(50) + (droppedText.count > 50 ? "..." : ""))
-                    .font(BuBuFonts.tiny)
-                    .foregroundColor(BuBuColors.chocolateBrown.opacity(0.65))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                    Text(previewText)
+                        .font(BuBuFonts.tiny)
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.65))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: BuBuShapes.smallRadius)
+                        .fill(Color.white)
+                )
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: BuBuShapes.smallRadius)
-                    .fill(Color.white)
-            )
 
-            // 动作按钮
-            HStack(spacing: 6) {
+            // 动作按钮（5 项需在 280pt 窗口内排开，间距收紧）
+            HStack(spacing: 2) {
                 ForEach(DragAction.allCases, id: \.self) { action in
                     ActionButton(action: action) {
                         onAction(action)
@@ -473,8 +486,10 @@ struct ActionButton: View {
                 Text(action.title)
                     .font(BuBuFonts.tiny)
                     .foregroundColor(BuBuColors.chocolateBrown.opacity(isHovered ? 0.9 : 0.65))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(width: 56, height: 58)
+            .frame(width: 48, height: 58)
             .contentShape(Rectangle())
             .scaleEffect(isHovered ? 1.06 : 1.0)
         }
@@ -495,6 +510,7 @@ private extension DragAction {
         case .translate: return BuBuColors.mintGreen
         case .addNote: return BuBuColors.peachBlush
         case .memo: return BuBuColors.lavender
+        case .guidance: return BuBuColors.coralPink
         }
     }
 }
