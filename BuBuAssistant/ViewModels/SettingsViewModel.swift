@@ -35,11 +35,25 @@ class SettingsViewModel: ObservableObject {
         didSet { saveCurrentCharacter() }
     }
 
-    @AppStorage("spriteScale") var spriteScale: Double = 1.0
-    @AppStorage("spriteOpacity") var spriteOpacity: Double = 1.0
-    @AppStorage("enableAnimation") var enableAnimation: Bool = true
-    @AppStorage("sleepDelay") var sleepDelay: Double = 300 // 秒
-    @AppStorage("use3DSprite") var use3DSprite: Bool = false // 是否使用 3D 模式
+    // 外观设置用 @Published + 手动持久化，不用 @AppStorage：
+    // @AppStorage 在 ObservableObject 里不会触发 objectWillChange，
+    // 导致右键切换 2D/3D、调大小透明度后视图不刷新（必须重启才生效）
+    @Published var spriteScale: Double = UserDefaults.standard.object(forKey: "spriteScale") as? Double ?? 1.0 {
+        didSet { UserDefaults.standard.set(spriteScale, forKey: "spriteScale") }
+    }
+    @Published var spriteOpacity: Double = UserDefaults.standard.object(forKey: "spriteOpacity") as? Double ?? 1.0 {
+        didSet { UserDefaults.standard.set(spriteOpacity, forKey: "spriteOpacity") }
+    }
+    @Published var enableAnimation: Bool = UserDefaults.standard.object(forKey: "enableAnimation") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(enableAnimation, forKey: "enableAnimation") }
+    }
+    @Published var sleepDelay: Double = UserDefaults.standard.object(forKey: "sleepDelay") as? Double ?? 300 {
+        didSet { UserDefaults.standard.set(sleepDelay, forKey: "sleepDelay") }
+    }
+    /// 是否使用 3D 模式
+    @Published var use3DSprite: Bool = UserDefaults.standard.bool(forKey: "use3DSprite") {
+        didSet { UserDefaults.standard.set(use3DSprite, forKey: "use3DSprite") }
+    }
 
     // MARK: - LLM 设置
 
