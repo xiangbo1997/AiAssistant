@@ -547,20 +547,28 @@ struct SceneKitView: NSViewRepresentable {
             head.position = SCNVector3(0, 0.16, 0.0)
             model.addChildNode(head)
 
-            // 头 - 超大圆球（参考图头占身高一大半），前后略压扁的软胶扁头
+            // 头 - 超大软胶头（参考图头占身高一大半），略横椭圆 + 脸颊鼓、下巴饱满
             let face = sphereNode(radius: 0.48, color: style.body, segments: 72)
-            face.scale = SCNVector3(1.06, 1.0, 0.92)
+            face.scale = SCNVector3(1.10, 0.98, 0.92)
             head.addChildNode(face)
+
+            // 脸颊鼓包 - 在两侧下方叠一层同色球，让脸颊更饱满圆润（参考图脸鼓鼓的）
+            for side in [CGFloat(-1), CGFloat(1)] {
+                let cheek = sphereNode(radius: 0.26, color: style.body, segments: 48)
+                cheek.position = SCNVector3(side * 0.19, -0.10, 0.10)
+                cheek.scale = SCNVector3(1.0, 0.92, 0.72)
+                head.addChildNode(cheek)
+            }
 
             // 耳朵 - 顶部两只深棕圆耳，各挂在可动耳根节点下（承接耳朵抖动微动作）
             for side in [CGFloat(-1), CGFloat(1)] {
                 let earPivot = SCNNode()
                 earPivot.name = side < 0 ? "bubu-ear-l" : "bubu-ear-r"
-                earPivot.position = SCNVector3(side * 0.30, 0.30, -0.03)  // 耳根靠头顶侧
+                earPivot.position = SCNVector3(side * 0.265, 0.335, -0.03)  // 耳根更贴头顶内侧
                 head.addChildNode(earPivot)
 
                 let ear = sphereNode(radius: 0.145, color: style.ear, segments: 44)
-                ear.position = SCNVector3(0, 0.13, 0)  // 耳球在耳根之上
+                ear.position = SCNVector3(0, 0.12, 0)  // 耳球在耳根之上
                 ear.scale = SCNVector3(1.0, 0.94, 0.78)
                 earPivot.addChildNode(ear)
             }
