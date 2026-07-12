@@ -611,25 +611,38 @@ struct SceneKitView: NSViewRepresentable {
                         g.materials = [matteMaterial(style.accent)]
                         return g
                     }())
-                    brow.position = SCNVector3(side * 0.185, 0.16, 0.44)
+                    brow.position = SCNVector3(side * 0.185, 0.135, 0.44)
                     // 只微微内低（0.22 rad ≈ 12.6°），呆萌不凶
                     brow.eulerAngles = SCNVector3(0, 0, Float(side) * 0.22 - Float.pi / 2)
                     head.addChildNode(brow)
                 }
             }
 
-            // 嘴 - 小巧含蓄的 "w"：细、短、浅弯，参考图的嘴很小不抢眼
+            // 嘴 - 柔和上扬的 "ω" 小猫嘴（参考图的嘴是呆萌笑，不是瘪嘴）：
+            // 中间一个小圆凸 + 两侧各一道向上外翘的短弧，形成 ω 轮廓
             let mouth = SCNNode()
-            mouth.position = SCNVector3(0, -0.14, 0.44)
+            mouth.position = SCNVector3(0, -0.15, 0.45)
             let mouthMat = matteMaterial(style.accent)
+
+            // 中间小圆凸（ω 的中峰）
+            let bump = SCNNode(geometry: {
+                let g = SCNSphere(radius: 0.011)
+                g.materials = [mouthMat]
+                return g
+            }())
+            bump.scale = SCNVector3(1.4, 1.0, 0.6)
+            mouth.addChildNode(bump)
+
+            // 两侧上翘短弧
             for side in [CGFloat(-1), CGFloat(1)] {
                 let seg = SCNNode(geometry: {
-                    let g = SCNCapsule(capRadius: 0.0075, height: 0.058)
+                    let g = SCNCapsule(capRadius: 0.0072, height: 0.05)
                     g.materials = [mouthMat]
                     return g
                 }())
-                seg.position = SCNVector3(side * 0.03, 0, 0)
-                seg.eulerAngles = SCNVector3(0, 0, Float(side) * 1.05)
+                seg.position = SCNVector3(side * 0.028, 0.006, 0)
+                // 外端上扬（负角度让弧朝上翘），呆萌笑
+                seg.eulerAngles = SCNVector3(0, 0, Float(side) * -1.25)
                 mouth.addChildNode(seg)
             }
             head.addChildNode(mouth)
