@@ -521,10 +521,10 @@ struct SceneKitView: NSViewRepresentable {
             model.name = "bubu-model"
             containerNode.addChildNode(model)
 
-            // 身体 - 小巧扁圆躯干，上移贴近头（参考图头极大、身体只是小小一坨、无明显脖子）
-            let body = sphereNode(radius: 0.27, color: style.body, segments: 64)
-            body.position = SCNVector3(0, -0.34, 0)
-            body.scale = SCNVector3(1.05, 0.90, 0.85)
+            // 身体 - 蛋形小躯干，下半更饱满圆胖、上移贴头（参考图身体像颗圆润的蛋）
+            let body = sphereNode(radius: 0.28, color: style.body, segments: 72)
+            body.position = SCNVector3(0, -0.36, 0)
+            body.scale = SCNVector3(1.08, 0.98, 0.88)
             model.addChildNode(body)
 
             // 胸前深棕小领结（布布特征）：两枚小圆点叠成蝴蝶结轮廓
@@ -571,35 +571,39 @@ struct SceneKitView: NSViewRepresentable {
             eyes.position = SCNVector3(0, 0.0, 0.42)
             head.addChildNode(eyes)
 
-            for xOffset in [CGFloat(-0.175), CGFloat(0.175)] {
-                // 眼珠 - 大而圆的深棕，明显凸出脸面
-                let eye = sphereNode(radius: 0.082, color: style.accent, segments: 36)
+            for xOffset in [CGFloat(-0.195), CGFloat(0.195)] {
+                // 眼珠 - 又大又圆的黑亮眼，明显凸出脸面（参考图眼睛靠脸颊两侧、间距宽）
+                let eye = sphereNode(radius: 0.088, color: style.accent, segments: 40)
                 eye.position = SCNVector3(xOffset, 0, 0)
-                eye.scale = SCNVector3(0.95, 1.08, 0.72)
+                eye.scale = SCNVector3(0.96, 1.10, 0.74)
+                // 眼珠自带一点光泽（降低粗糙度），更像参考图黑亮的果冻眼
+                eye.geometry?.firstMaterial?.roughness.contents = 0.45
+                eye.geometry?.firstMaterial?.clearCoat.contents = 0.6
                 eyes.addChildNode(eye)
 
                 // 大高光 - 白色亮斑（自发光，始终明亮），水汪汪的关键
-                let highlightGeometry = SCNSphere(radius: 0.030)
+                let highlightGeometry = SCNSphere(radius: 0.033)
                 let highlightMaterial = SCNMaterial()
                 highlightMaterial.lightingModel = .constant
                 highlightMaterial.diffuse.contents = NSColor.white
                 highlightGeometry.materials = [highlightMaterial]
                 let highlight = SCNNode(geometry: highlightGeometry)
-                highlight.position = SCNVector3(xOffset + 0.026, 0.032, 0.07)
+                highlight.position = SCNVector3(xOffset + 0.028, 0.035, 0.075)
                 eyes.addChildNode(highlight)
 
                 // 小副高光（下方一小点，让眼睛更灵动透亮）
-                let subGeo = SCNSphere(radius: 0.013)
+                let subGeo = SCNSphere(radius: 0.015)
                 let subMat = SCNMaterial()
                 subMat.lightingModel = .constant
                 subMat.diffuse.contents = NSColor.white
                 subGeo.materials = [subMat]
                 let sub = SCNNode(geometry: subGeo)
-                sub.position = SCNVector3(xOffset - 0.02, -0.03, 0.07)
+                sub.position = SCNVector3(xOffset - 0.022, -0.035, 0.075)
                 eyes.addChildNode(sub)
             }
 
-            // 眉毛 - 呆萌小斜眉（布布特征）：短、平、只微微内低，是"倔强呆萌"不是"凶"
+            // 眉毛 - 呆萌小斜眉（布布特征）：短、平、只微微内低，是"倔强呆萌"不是"凶"。
+            // 随加宽的眼睛外移到眼睛正上方
             if style.hasBrows {
                 for side in [CGFloat(-1), CGFloat(1)] {
                     let brow = SCNNode(geometry: {
@@ -607,8 +611,8 @@ struct SceneKitView: NSViewRepresentable {
                         g.materials = [matteMaterial(style.accent)]
                         return g
                     }())
-                    brow.position = SCNVector3(side * 0.165, 0.155, 0.42)
-                    // 只微微内低（0.22 rad ≈ 12.6°），比之前的 0.5 平缓得多
+                    brow.position = SCNVector3(side * 0.185, 0.16, 0.44)
+                    // 只微微内低（0.22 rad ≈ 12.6°），呆萌不凶
                     brow.eulerAngles = SCNVector3(0, 0, Float(side) * 0.22 - Float.pi / 2)
                     head.addChildNode(brow)
                 }
@@ -630,14 +634,14 @@ struct SceneKitView: NSViewRepresentable {
             }
             head.addChildNode(mouth)
 
-            // 腮红 - 大而柔和的圆色斑，半透明贴脸（参考图腮红明显、圆润）
-            for xOffset in [CGFloat(-0.32), CGFloat(0.32)] {
-                let blushGeo = SCNSphere(radius: 0.095)
+            // 腮红 - 大而柔和的圆色斑，位于眼睛正下方偏外，半透明贴脸（参考图腮红明显圆润）
+            for xOffset in [CGFloat(-0.33), CGFloat(0.33)] {
+                let blushGeo = SCNSphere(radius: 0.10)
                 blushGeo.segmentCount = 32
                 blushGeo.materials = [blushMaterial(style.blush)]
                 let blush = SCNNode(geometry: blushGeo)
-                blush.position = SCNVector3(xOffset, -0.075, 0.34)
-                blush.scale = SCNVector3(1.0, 0.9, 0.3)
+                blush.position = SCNVector3(xOffset, -0.11, 0.33)
+                blush.scale = SCNVector3(1.0, 0.92, 0.28)
                 head.addChildNode(blush)
             }
 
