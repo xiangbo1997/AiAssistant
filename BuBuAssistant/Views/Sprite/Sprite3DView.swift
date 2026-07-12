@@ -57,11 +57,12 @@ struct SceneKitView: NSViewRepresentable {
         // 当前角色标识（切换角色时据此重建 3D 模型）
         private var currentCharacterID: UUID
 
-        // 微动作目标节点（仅恐龙套装模型存在，占位符模型时为 nil，动画自动跳过）
+        // 微动作目标节点（仅熊猫/小熊模型存在，占位符模型时为 nil，动画自动跳过）
         private var modelNode: SCNNode?
         private var headNode: SCNNode?
         private var eyesNode: SCNNode?
-        private var tailNode: SCNNode?
+        private var earLNode: SCNNode?
+        private var earRNode: SCNNode?
         private var armLNode: SCNNode?
         private var armRNode: SCNNode?
         private var footLNode: SCNNode?
@@ -164,7 +165,8 @@ struct SceneKitView: NSViewRepresentable {
             modelNode = characterNode.childNode(withName: "bubu-model", recursively: true)
             headNode = characterNode.childNode(withName: "bubu-head", recursively: true)
             eyesNode = characterNode.childNode(withName: "bubu-eyes", recursively: true)
-            tailNode = characterNode.childNode(withName: "bubu-tail", recursively: true)
+            earLNode = characterNode.childNode(withName: "bubu-ear-l", recursively: true)
+            earRNode = characterNode.childNode(withName: "bubu-ear-r", recursively: true)
             armLNode = characterNode.childNode(withName: "bubu-arm-l", recursively: true)
             armRNode = characterNode.childNode(withName: "bubu-arm-r", recursively: true)
             footLNode = characterNode.childNode(withName: "bubu-foot-l", recursively: true)
@@ -185,12 +187,12 @@ struct SceneKitView: NSViewRepresentable {
             startMicroAnimations()
         }
 
-        // MARK: - 微动作（眨眼/摇尾/随机小动作）
+        // MARK: - 微动作（眨眼/耳朵抖动/摆臂/随机小动作）
 
         /// 启动所有微动作循环。全部挂在子节点上，与外层状态动画共存
         private func startMicroAnimations() {
             startBlinking()
-            startTailWag()
+            startEarWiggle()
             startArmSway()
             startRandomGestures()
         }
@@ -240,22 +242,23 @@ struct SceneKitView: NSViewRepresentable {
             eyes.runAction(loop, forKey: "blink")
         }
 
-        /// 尾巴摇摆：轻幅慢摆，间歇停顿，像随呼吸自然晃动
-        private func startTailWag() {
-            guard let tail = tailNode else { return }
+        /// 耳朵抖动：间歇性轻轻抽动一下双耳，像有点小情绪，两耳向外倾再回正
+        private func startEarWiggle() {
+            for (ear, side) in [(earLNode, CGFloat(1)), (earRNode, CGFloat(-1))] {
+                guard let ear else { continue }
 
-            let wagLeft = SCNAction.rotateBy(x: 0, y: 0, z: 0.22, duration: 0.5)
-            wagLeft.timingMode = .easeInEaseOut
-            let wagRight = SCNAction.rotateBy(x: 0, y: 0, z: -0.44, duration: 0.9)
-            wagRight.timingMode = .easeInEaseOut
-            let wagBack = SCNAction.rotateBy(x: 0, y: 0, z: 0.22, duration: 0.5)
-            wagBack.timingMode = .easeInEaseOut
+                let tilt = SCNAction.rotateBy(x: 0, y: 0, z: 0.28 * side, duration: 0.14)
+                tilt.timingMode = .easeOut
+                let back = SCNAction.rotateBy(x: 0, y: 0, z: -0.28 * side, duration: 0.22)
+                back.timingMode = .easeInEaseOut
+                let wiggleOnce = SCNAction.sequence([tilt, back, tilt, back])
 
-            let loop = SCNAction.repeatForever(.sequence([
-                wagLeft, wagRight, wagBack,
-                .wait(duration: 2.5, withRange: 2.0)
-            ]))
-            tail.runAction(loop, forKey: "wag")
+                let loop = SCNAction.repeatForever(.sequence([
+                    .wait(duration: 5.0, withRange: 4.0),
+                    wiggleOnce
+                ]))
+                ear.runAction(loop, forKey: "wiggle")
+            }
         }
 
         /// 随机小动作：待机时每 7~15 秒做一个（歪头 / 左右张望 / 原地小跳）
@@ -431,56 +434,48 @@ struct SceneKitView: NSViewRepresentable {
                 }
             }
 
-            // 预设角色使用代码构建的恐龙套装 3D 模型（有 usdz/scn 文件时优先加载文件）
+            // 预设角色使用代码构建的软胶熊猫/小熊 3D 模型（有 usdz/scn 文件时优先加载文件）
             switch character.imageName {
             case "bubu":
-                return createDinoNode(style: .bubu)   // 蓝色恐龙装 + 棕色宝宝
+                return createBuddyNode(style: .bubu)   // 白熊猫（布布）
             case "yier":
-                return createDinoNode(style: .yier)   // 粉色恐龙装 + 白色宝宝
+                return createBuddyNode(style: .dudu)   // 棕小熊（一二/嘟嘟）
             default:
                 // 自定义角色暂无 3D 模型：显示可爱占位符
                 return createCutePlaceholder()
             }
         }
 
-        // MARK: - 恐龙套装 3D 模型（布布/逸尔共用一套建模，配色与特征参数化）
+        // MARK: - 软胶熊猫/小熊 3D 模型（布布/一二共用一套建模，配色与特征参数化）
 
-        /// 恐龙套装角色外观参数。
-        /// 布布 = 棕色宝宝 + 蓝色恐龙装（奶油肚皮）；逸尔 = 白色宝宝 + 粉色恐龙装（眼斑+蝴蝶结）
-        struct DinoStyle {
-            let hood: NSColor       // 帽兜/爪垫/尾巴
-            let body: NSColor       // 身体/脸/脚
+        /// 角色外观参数（对照参考图采样）。
+        /// 布布 = 白色熊猫（深棕圆耳 + 粉腮红 + 倔强眉 + 深棕小领结）；
+        /// 一二 = 棕色小熊（深棕圆耳 + 橘黄腮红）
+        struct BuddyStyle {
+            let body: NSColor       // 身体/头
+            let ear: NSColor        // 圆耳朵
             let blush: NSColor      // 腮红
-            let accent: NSColor     // 眼睛/嘴
-            let belly: NSColor?     // 肚皮贴片（布布的奶油肚），nil 表示无
-            let hasEyePatch: Bool   // 右眼深棕眼斑（逸尔特征）
-            let hasBow: Bool        // 胸前蝴蝶结（逸尔特征）
+            let accent: NSColor     // 眼睛/嘴/眉/脚尖
+            let hasBrows: Bool      // 倔强眉毛（布布特征）
+            let hasCollar: Bool     // 胸前深棕小领结（布布特征）
 
-            static let bubu = DinoStyle(
-                hood: NSColor(red: 0.56, green: 0.80, blue: 0.91, alpha: 1.0),
-                body: NSColor(red: 0.80, green: 0.56, blue: 0.38, alpha: 1.0),
-                blush: NSColor(red: 0.99, green: 0.80, blue: 0.55, alpha: 1.0),
-                accent: NSColor(red: 0.24, green: 0.16, blue: 0.12, alpha: 1.0),
-                belly: NSColor(red: 0.96, green: 0.88, blue: 0.74, alpha: 1.0),
-                hasEyePatch: false,
-                hasBow: false
+            static let bubu = BuddyStyle(
+                body: NSColor(red: 0.995, green: 0.985, blue: 0.975, alpha: 1.0),  // 纯白略暖
+                ear: NSColor(red: 0.30, green: 0.20, blue: 0.17, alpha: 1.0),      // 深棕耳
+                blush: NSColor(red: 0.97, green: 0.68, blue: 0.72, alpha: 1.0),    // 粉腮红
+                accent: NSColor(red: 0.26, green: 0.17, blue: 0.14, alpha: 1.0),   // 深棕五官
+                hasBrows: true,
+                hasCollar: true
             )
 
-            static let yier = DinoStyle(
-                hood: NSColor(red: 0.96, green: 0.72, blue: 0.76, alpha: 1.0),
-                body: NSColor(red: 0.99, green: 0.97, blue: 0.95, alpha: 1.0),
-                blush: NSColor(red: 0.98, green: 0.62, blue: 0.62, alpha: 1.0),
-                accent: NSColor(red: 0.20, green: 0.13, blue: 0.10, alpha: 1.0),
-                belly: nil,
-                hasEyePatch: true,
-                hasBow: true
+            static let dudu = BuddyStyle(
+                body: NSColor(red: 0.74, green: 0.53, blue: 0.40, alpha: 1.0),     // 焦糖棕
+                ear: NSColor(red: 0.34, green: 0.23, blue: 0.18, alpha: 1.0),      // 深棕耳
+                blush: NSColor(red: 0.99, green: 0.78, blue: 0.42, alpha: 1.0),    // 橘黄腮红
+                accent: NSColor(red: 0.24, green: 0.16, blue: 0.13, alpha: 1.0),   // 深棕五官
+                hasBrows: false,
+                hasCollar: false
             )
-        }
-
-        /// 通用配色（两只角色共用）
-        private enum SharedPalette {
-            static let spikeWhite = NSColor(red: 0.99, green: 0.99, blue: 0.97, alpha: 1.0)  // 棘刺白
-            static let patchBrown = NSColor(red: 0.33, green: 0.23, blue: 0.19, alpha: 1.0)  // 眼斑/蝴蝶结深棕
         }
 
         /// 软胶/绒毛质感 PBR 材质：高粗糙度 + 零金属度模拟毛绒公仔表面，
@@ -505,10 +500,20 @@ struct SceneKitView: NSViewRepresentable {
             return SCNNode(geometry: geometry)
         }
 
-        /// 构建恐龙套装角色（布布/逸尔共用建模，外观由 style 决定）。
-        /// 节点分层专为动画设计：外层容器承接状态动画（浮动/跳跃等），
-        /// 内层 bubu-model / bubu-head / bubu-eyes / bubu-tail 承接微动作，互不干扰
-        static func createDinoNode(style: DinoStyle) -> SCNNode {
+        /// 半透明腮红材质（叠加在脸上不遮挡轮廓）
+        private static func blushMaterial(_ color: NSColor) -> SCNMaterial {
+            let material = matteMaterial(color)
+            material.transparency = 0.55
+            material.clearCoat.contents = 0.0
+            return material
+        }
+
+        /// 构建软胶熊猫/小熊角色（布布/一二共用建模，外观由 style 决定）。
+        /// 对照参考图：扁圆软胶身体、头身近乎连一体、顶部两只圆耳、大圆眼、
+        /// "w"形小嘴、圆腮红、连身小短手短脚、深棕脚尖。
+        /// 节点分层专为动画设计：外层容器承接状态动画，
+        /// 内层 bubu-model / bubu-head / bubu-eyes / 四肢节点承接微动作
+        static func createBuddyNode(style: BuddyStyle) -> SCNNode {
             let containerNode = SCNNode()
 
             // 内层模型根节点（小跳等全身微动作挂在这里，不与外层状态动画冲突）
@@ -516,159 +521,151 @@ struct SceneKitView: NSViewRepresentable {
             model.name = "bubu-model"
             containerNode.addChildNode(model)
 
-            // 身体 - 圆润连体衣
-            let body = sphereNode(radius: 0.30, color: style.body, segments: 48)
-            body.position = SCNVector3(0, -0.25, 0)
-            body.scale = SCNVector3(1.0, 0.95, 0.9)
+            // 身体 - 扁圆软胶躯干（参考图身体偏矮胖、下宽上窄）
+            let body = sphereNode(radius: 0.32, color: style.body, segments: 64)
+            body.position = SCNVector3(0, -0.30, 0)
+            body.scale = SCNVector3(1.02, 0.92, 0.86)
             model.addChildNode(body)
 
-            // 肚皮贴片（布布的奶油肚）
-            if let bellyColor = style.belly {
-                let belly = sphereNode(radius: 0.22, color: bellyColor)
-                belly.position = SCNVector3(0, -0.24, 0.14)
-                belly.scale = SCNVector3(0.85, 0.80, 0.45)
-                model.addChildNode(belly)
-            }
-
-            // 胸前蝴蝶结 - 深棕两翼 + 中心结（逸尔特征）
-            if style.hasBow {
-                let bow = SCNNode()
-                bow.position = SCNVector3(0, -0.10, 0.25)
-                for side in [Float(-1), Float(1)] {
-                    let wingGeometry = SCNCone(topRadius: 0, bottomRadius: 0.042, height: 0.09)
-                    wingGeometry.materials = [matteMaterial(SharedPalette.patchBrown)]
-                    let wing = SCNNode(geometry: wingGeometry)
-                    wing.position = SCNVector3(CGFloat(side) * 0.055, 0, 0)
-                    wing.eulerAngles = SCNVector3(0, 0, side * Float.pi / 2)
-                    bow.addChildNode(wing)
+            // 胸前深棕小领结（布布特征）：两枚小圆点叠成蝴蝶结轮廓
+            if style.hasCollar {
+                for side in [CGFloat(-1), CGFloat(1)] {
+                    let loop = sphereNode(radius: 0.028, color: style.accent, segments: 20)
+                    loop.position = SCNVector3(side * 0.032, -0.11, 0.29)
+                    loop.scale = SCNVector3(1.0, 1.2, 0.5)
+                    model.addChildNode(loop)
                 }
-                let knot = sphereNode(radius: 0.026, color: SharedPalette.patchBrown, segments: 16)
-                bow.addChildNode(knot)
-                model.addChildNode(bow)
+                let center = sphereNode(radius: 0.02, color: style.accent, segments: 16)
+                center.position = SCNVector3(0, -0.11, 0.31)
+                center.scale = SCNVector3(1.0, 1.0, 0.6)
+                model.addChildNode(center)
             }
 
-            // 头部组（歪头/张望动画的旋转轴心在这里）
+            // 头部组（歪头/张望动画的旋转轴心）。参考图头略大于身、几乎与身相连
             let head = SCNNode()
             head.name = "bubu-head"
-            head.position = SCNVector3(0, 0.26, 0.02)
+            head.position = SCNVector3(0, 0.20, 0.0)
             model.addChildNode(head)
 
-            // 恐龙帽兜 - 粉色大球包裹头部（前后略压扁，让白脸从兜口探出）
-            let hood = sphereNode(radius: 0.40, color: style.hood, segments: 48)
-            hood.position = SCNVector3(0, 0.02, -0.04)
-            hood.scale = SCNVector3(1.0, 1.0, 0.92)
-            head.addChildNode(hood)
-
-            // 脸部 - 白色球明显探出帽兜前方，粉色兜边框住白脸
-            let face = sphereNode(radius: 0.33, color: style.body, segments: 48)
-            face.position = SCNVector3(0, -0.02, 0.15)
-            face.scale = SCNVector3(1.0, 0.92, 0.85)
+            // 头 - 大圆球，前后略压扁（软胶扁头）。参考图头明显大于身
+            let face = sphereNode(radius: 0.41, color: style.body, segments: 64)
+            face.scale = SCNVector3(1.05, 0.98, 0.90)
             head.addChildNode(face)
 
-            // 右眼眼斑 - 深棕椭圆贴片（逸尔的标志特征），微微凸出脸面
-            if style.hasEyePatch {
-                let patch = sphereNode(radius: 0.095, color: SharedPalette.patchBrown, segments: 24)
-                patch.position = SCNVector3(0.12, 0.05, 0.39)
-                patch.scale = SCNVector3(1.1, 1.3, 0.3)
-                head.addChildNode(patch)
+            // 耳朵 - 顶部两只深棕圆耳，各挂在可动耳根节点下（承接耳朵抖动微动作）
+            for side in [CGFloat(-1), CGFloat(1)] {
+                let earPivot = SCNNode()
+                earPivot.name = side < 0 ? "bubu-ear-l" : "bubu-ear-r"
+                earPivot.position = SCNVector3(side * 0.255, 0.24, -0.02)  // 耳根靠头顶侧
+                head.addChildNode(earPivot)
+
+                let ear = sphereNode(radius: 0.125, color: style.ear, segments: 40)
+                ear.position = SCNVector3(0, 0.12, 0)  // 耳球在耳根之上
+                ear.scale = SCNVector3(1.0, 0.95, 0.8)
+                earPivot.addChildNode(ear)
             }
 
-            // 帽兜棘刺 - 一排白色圆钝小角，从头顶前缘向后依次排列成锯齿背脊（布布恐龙装标志）。
-            // 每枚沿脸朝向的斜前上方指出、间距拉开，正面能看到错落的一排尖；
-            // topRadius>0 让尖端钝圆，像绒毛玩偶的软刺
-            let spikeConfigs: [(position: SCNVector3, tiltX: Float, radius: CGFloat, height: CGFloat)] = [
-                (SCNVector3(0, 0.47, 0.22), 0.75, 0.048, 0.14),   // 最前刺（大幅前倾，探出帽兜前额）
-                (SCNVector3(0, 0.54, 0.06), 0.38, 0.054, 0.17),   // 前中刺
-                (SCNVector3(0, 0.56, -0.11), 0.02, 0.052, 0.16),  // 顶刺（最高）
-                (SCNVector3(0, 0.49, -0.27), -0.45, 0.044, 0.12)  // 后刺
-            ]
-            for config in spikeConfigs {
-                let spikeGeometry = SCNCone(topRadius: config.radius * 0.3, bottomRadius: config.radius, height: config.height)
-                spikeGeometry.materials = [matteMaterial(SharedPalette.spikeWhite)]
-                let spike = SCNNode(geometry: spikeGeometry)
-                spike.position = config.position
-                spike.eulerAngles = SCNVector3(config.tiltX, 0, 0)
-                head.addChildNode(spike)
-            }
-
-            // 眼睛组（眨眼动画对该组做 Y 轴压扁）
+            // 眼睛组（眨眼动画对该组做 Y 轴压扁）。参考图双眼圆、间距较宽
             let eyes = SCNNode()
             eyes.name = "bubu-eyes"
-            eyes.position = SCNVector3(0, 0.04, 0.42)
+            eyes.position = SCNVector3(0, 0.02, 0.36)
             head.addChildNode(eyes)
 
-            for xOffset in [CGFloat(-0.11), CGFloat(0.11)] {
-                let eye = sphereNode(radius: 0.048, color: style.accent, segments: 24)
+            for xOffset in [CGFloat(-0.145), CGFloat(0.145)] {
+                // 眼珠 - 大而圆的深棕，略微凸出脸面
+                let eye = sphereNode(radius: 0.066, color: style.accent, segments: 32)
                 eye.position = SCNVector3(xOffset, 0, 0)
+                eye.scale = SCNVector3(0.94, 1.06, 0.7)
                 eyes.addChildNode(eye)
 
-                let highlightGeometry = SCNSphere(radius: 0.016)
+                // 高光 - 白色小点（自发光，不受光照影响始终亮）
+                let highlightGeometry = SCNSphere(radius: 0.021)
                 let highlightMaterial = SCNMaterial()
+                highlightMaterial.lightingModel = .constant
                 highlightMaterial.diffuse.contents = NSColor.white
-                highlightMaterial.emission.contents = NSColor.white
                 highlightGeometry.materials = [highlightMaterial]
                 let highlight = SCNNode(geometry: highlightGeometry)
-                highlight.position = SCNVector3(xOffset + 0.015, 0.015, 0.04)
+                highlight.position = SCNVector3(xOffset + 0.02, 0.025, 0.06)
                 eyes.addChildNode(highlight)
             }
 
-            // 腮红 - 半透明粉色圆片
-            for xOffset in [CGFloat(-0.21), CGFloat(0.21)] {
-                let blush = sphereNode(radius: 0.055, color: style.blush, segments: 24)
-                blush.geometry?.firstMaterial?.transparency = 0.65
-                blush.position = SCNVector3(xOffset, -0.06, 0.37)
-                blush.scale = SCNVector3(1.0, 0.6, 0.35)
+            // 眉毛 - 倔强斜眉（布布特征），两道深棕短粗斜杠
+            if style.hasBrows {
+                for side in [CGFloat(-1), CGFloat(1)] {
+                    let brow = SCNNode(geometry: {
+                        let g = SCNCapsule(capRadius: 0.014, height: 0.075)
+                        g.materials = [matteMaterial(style.accent)]
+                        return g
+                    }())
+                    brow.position = SCNVector3(side * 0.135, 0.115, 0.35)
+                    // 内低外高的倔强眉形（内侧压低）
+                    brow.eulerAngles = SCNVector3(0, 0, Float(side) * 0.5 - Float.pi / 2)
+                    head.addChildNode(brow)
+                }
+            }
+
+            // 嘴 - "w"形小嘴：两侧各一道外扬的下弯，中间夹角形成 w 尖
+            let mouth = SCNNode()
+            mouth.position = SCNVector3(0, -0.115, 0.38)
+            let mouthMat = matteMaterial(style.accent)
+            for side in [CGFloat(-1), CGFloat(1)] {
+                let seg = SCNNode(geometry: {
+                    let g = SCNCapsule(capRadius: 0.0095, height: 0.07)
+                    g.materials = [mouthMat]
+                    return g
+                }())
+                seg.position = SCNVector3(side * 0.035, 0, 0)
+                // 更平的下弯（角度更接近水平），w 更宽更扁
+                seg.eulerAngles = SCNVector3(0, 0, Float(side) * 1.05)
+                mouth.addChildNode(seg)
+            }
+            head.addChildNode(mouth)
+
+            // 腮红 - 圆形柔和色斑，半透明贴脸
+            for xOffset in [CGFloat(-0.26), CGFloat(0.26)] {
+                let blushGeo = SCNSphere(radius: 0.072)
+                blushGeo.segmentCount = 28
+                blushGeo.materials = [blushMaterial(style.blush)]
+                let blush = SCNNode(geometry: blushGeo)
+                blush.position = SCNVector3(xOffset, -0.07, 0.32)
+                blush.scale = SCNVector3(1.05, 0.85, 0.35)
                 head.addChildNode(blush)
             }
 
-            // 嘴巴 - 小巧的深色微笑点
-            let mouth = sphereNode(radius: 0.022, color: style.accent, segments: 16)
-            mouth.position = SCNVector3(0, -0.09, 0.43)
-            mouth.scale = SCNVector3(1.5, 0.7, 0.5)
-            head.addChildNode(mouth)
-
-            // 手臂 - 圆润短胖胶囊 + 末端圆爪，整组挂在肩部轴心节点下：
-            // 挥手/摆臂动画旋转肩部组节点，手臂绕肩膀转才自然（绕自身中心会像螺旋桨）
+            // 手臂 - 短圆胖胳膊，垂在身侧、末端微收，挂在肩部轴心节点下
             for side in [CGFloat(-1), CGFloat(1)] {
                 let shoulder = SCNNode()
                 shoulder.name = side < 0 ? "bubu-arm-l" : "bubu-arm-r"
-                shoulder.position = SCNVector3(side * 0.20, -0.05, 0.05)
+                shoulder.position = SCNVector3(side * 0.28, -0.16, 0.04)
                 model.addChildNode(shoulder)
 
-                let armGeometry = SCNCapsule(capRadius: 0.075, height: 0.20)
+                let armGeometry = SCNCapsule(capRadius: 0.066, height: 0.19)
                 armGeometry.materials = [matteMaterial(style.body)]
                 let arm = SCNNode(geometry: armGeometry)
-                arm.position = SCNVector3(side * 0.07, -0.09, 0.01)
-                arm.eulerAngles = SCNVector3(0, 0, Float(side) * -0.7)
+                arm.position = SCNVector3(side * 0.02, -0.07, 0.0)
+                arm.eulerAngles = SCNVector3(0, 0, Float(side) * -0.32)
                 shoulder.addChildNode(arm)
-
-                // 圆爪垫（套装手部）
-                let paw = sphereNode(radius: 0.068, color: style.hood, segments: 24)
-                paw.position = SCNVector3(side * 0.155, -0.155, 0.02)
-                shoulder.addChildNode(paw)
             }
 
-            // 脚 - 套装小脚丫，明显朝前伸出；踝部轴心节点承接踢腿动画
+            // 脚 - 连身小短脚，脚尖深棕（参考图脚底一小撮深色）；踝部轴心承接踢腿
             for side in [CGFloat(-1), CGFloat(1)] {
                 let ankle = SCNNode()
                 ankle.name = side < 0 ? "bubu-foot-l" : "bubu-foot-r"
-                ankle.position = SCNVector3(side * 0.135, -0.52, 0.04)
+                ankle.position = SCNVector3(side * 0.15, -0.60, 0.06)
                 model.addChildNode(ankle)
 
-                let foot = sphereNode(radius: 0.10, color: style.body, segments: 24)
-                foot.position = SCNVector3(0, -0.02, 0.07)
-                foot.scale = SCNVector3(1.0, 0.5, 1.45)  // 压扁拉长成脚掌形
+                // 脚掌（身体同色）
+                let foot = sphereNode(radius: 0.115, color: style.body, segments: 32)
+                foot.position = SCNVector3(0, 0.0, 0.03)
+                foot.scale = SCNVector3(0.95, 0.62, 1.2)
                 ankle.addChildNode(foot)
-            }
 
-            // 尾巴 - 粉色圆钝小锥从身后翘起（待机时轻轻摇摆），尖端圆润更像玩偶尾
-            let tailGeometry = SCNCone(topRadius: 0.028, bottomRadius: 0.10, height: 0.24)
-            tailGeometry.materials = [matteMaterial(style.hood)]
-            let tail = SCNNode(geometry: tailGeometry)
-            tail.name = "bubu-tail"
-            tail.position = SCNVector3(0, -0.40, -0.28)
-            tail.eulerAngles = SCNVector3(-2.2, 0, 0)
-            model.addChildNode(tail)
+                // 脚尖深棕小块
+                let toe = sphereNode(radius: 0.055, color: style.accent, segments: 24)
+                toe.position = SCNVector3(0, -0.01, 0.11)
+                toe.scale = SCNVector3(1.0, 0.7, 0.7)
+                ankle.addChildNode(toe)
+            }
 
             return containerNode
         }
