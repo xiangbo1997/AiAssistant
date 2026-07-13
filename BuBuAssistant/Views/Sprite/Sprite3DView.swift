@@ -85,7 +85,7 @@ struct SceneKitView: NSViewRepresentable {
             shadowMaterial.lightingModel = .constant
             shadowGeometry.materials = [shadowMaterial]
             let shadow = SCNNode(geometry: shadowGeometry)
-            shadow.position = SCNVector3(0, -0.72, 0)
+            shadow.position = SCNVector3(0, -0.77, 0)
             shadow.scale = SCNVector3(1.0, 1.0, 0.8)
             scene.rootNode.addChildNode(shadow)
 
@@ -516,10 +516,10 @@ struct SceneKitView: NSViewRepresentable {
             // 全身 Z 压扁系数 —— 参考图是"捏扁的软陶浮雕"，不是饱满球公仔
             let flat: Float = 0.72
 
-            // 身体 - 极小圆肚（baby 比例：身体远小于头），横向略宽、Z 压扁贴合浮雕感
-            let body = sphereNode(radius: 0.25, color: style.body, segments: 72)
-            body.position = SCNVector3(0, -0.40, 0)
-            body.scale = SCNVector3(1.14, 1.0, flat)
+            // 身体 - 圆肚（baby 比例但身体比先前略大一些），横向略宽、Z 压扁贴合浮雕感
+            let body = sphereNode(radius: 0.285, color: style.body, segments: 72)
+            body.position = SCNVector3(0, -0.42, 0)
+            body.scale = SCNVector3(1.10, 1.0, flat)
             model.addChildNode(body)
 
             // 胸前深棕小领结（布布特征）：两枚小圆点叠成蝴蝶结轮廓
@@ -674,7 +674,7 @@ struct SceneKitView: NSViewRepresentable {
             for side in [CGFloat(-1), CGFloat(1)] {
                 let shoulder = SCNNode()
                 shoulder.name = side < 0 ? "bubu-arm-l" : "bubu-arm-r"
-                shoulder.position = SCNVector3(side * 0.22, -0.30, 0.03)
+                shoulder.position = SCNVector3(side * 0.235, -0.32, 0.03)  // 随身体加大外移下移
                 model.addChildNode(shoulder)
 
                 let armGeometry = SCNCapsule(capRadius: 0.058, height: 0.13)
@@ -690,7 +690,7 @@ struct SceneKitView: NSViewRepresentable {
             for side in [CGFloat(-1), CGFloat(1)] {
                 let ankle = SCNNode()
                 ankle.name = side < 0 ? "bubu-foot-l" : "bubu-foot-r"
-                ankle.position = SCNVector3(side * 0.12, -0.61, 0.03)
+                ankle.position = SCNVector3(side * 0.135, -0.66, 0.03)  // 随身体加大外移下移
                 model.addChildNode(ankle)
 
                 // 脚掌（身体同色）
