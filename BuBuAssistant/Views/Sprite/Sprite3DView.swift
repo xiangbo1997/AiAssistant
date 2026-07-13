@@ -79,13 +79,13 @@ struct SceneKitView: NSViewRepresentable {
 
             // 地面软阴影：静态半透明圆片替代真实阴影贴图（性能考虑不开 shadow map），
             // 随浮动节奏轻微缩放，制造"离地远近"的错觉
-            let shadowGeometry = SCNCylinder(radius: 0.30, height: 0.005)
+            let shadowGeometry = SCNCylinder(radius: 0.34, height: 0.005)
             let shadowMaterial = SCNMaterial()
             shadowMaterial.diffuse.contents = NSColor(calibratedRed: 0.25, green: 0.18, blue: 0.16, alpha: 0.22)
             shadowMaterial.lightingModel = .constant
             shadowGeometry.materials = [shadowMaterial]
             let shadow = SCNNode(geometry: shadowGeometry)
-            shadow.position = SCNVector3(0, -0.77, 0)
+            shadow.position = SCNVector3(0, -0.87, 0)
             shadow.scale = SCNVector3(1.0, 1.0, 0.8)
             scene.rootNode.addChildNode(shadow)
 
@@ -96,13 +96,12 @@ struct SceneKitView: NSViewRepresentable {
             shadowGrow.timingMode = .easeInEaseOut
             shadow.runAction(.repeatForever(.sequence([shadowShrink, shadowGrow])))
 
-            // 创建相机：略微抬高并俯视，露出头顶的棘刺背脊，也让姿态更立体
-            // （纯平视会把前后排列的棘刺压成一根）
+            // 创建相机：平视正面，对齐参考图的正面全身站姿视角
             cameraNode = SCNNode()
             cameraNode.camera = SCNCamera()
             cameraNode.camera?.fieldOfView = 40  // 收窄视角减轻透视畸变，更接近贴纸的正投影观感
-            cameraNode.position = SCNVector3(x: 0, y: 0.45, z: 3.1)
-            cameraNode.look(at: SCNVector3(0, -0.05, 0))
+            cameraNode.position = SCNVector3(x: 0, y: 0.15, z: 3.1)
+            cameraNode.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(cameraNode)
 
             // 基于图像的环境光照（IBL）：程序化暖色渐变作环境贴图，
@@ -449,46 +448,52 @@ struct SceneKitView: NSViewRepresentable {
         // MARK: - 软胶熊猫/小熊 3D 模型（布布/一二共用一套建模，配色与特征参数化）
 
         /// 角色外观参数（对照参考图采样）。
-        /// 布布 = 白色熊猫（深棕圆耳 + 粉腮红 + 倔强眉 + 深棕小领结）；
-        /// 一二 = 棕色小熊（深棕圆耳 + 橘黄腮红）
+        /// 布布 = 白熊猫（深棕实心圆耳 + 粉腮红 + 倔强怒眉 + 深棕领巾 + 深棕脚垫）；
+        /// 一二 = 棕小熊（深棕描边耳 + 橘黄腮红）
         struct BuddyStyle {
             let body: NSColor       // 身体/头
-            let ear: NSColor        // 圆耳朵
+            let ear: NSColor        // 耳朵主色
+            let earRim: NSColor?    // 耳朵描边环（一二有，布布是实心深耳）
             let blush: NSColor      // 腮红
-            let accent: NSColor     // 眼睛/嘴/眉/脚尖
-            let hasBrows: Bool      // 倔强眉毛（布布特征）
-            let hasCollar: Bool     // 胸前深棕小领结（布布特征）
+            let accent: NSColor     // 眼/眉/嘴/领巾/脚垫
+            let hasBrows: Bool      // 倔强怒眉（布布特征）
+            let hasScarf: Bool      // 深棕领巾 + 胸前三瓣结（布布特征）
+            let hasToeCaps: Bool    // 深棕脚垫（布布特征）
 
             static let bubu = BuddyStyle(
-                body: NSColor(red: 0.995, green: 0.985, blue: 0.975, alpha: 1.0),  // 纯白略暖
-                ear: NSColor(red: 0.32, green: 0.21, blue: 0.18, alpha: 1.0),      // 深棕耳
-                blush: NSColor(red: 0.98, green: 0.66, blue: 0.70, alpha: 1.0),    // 粉腮红
-                accent: NSColor(red: 0.30, green: 0.24, blue: 0.26, alpha: 1.0),   // 深青灰黑五官（参考图五官偏冷灰）
+                body: NSColor(red: 0.995, green: 0.99, blue: 0.98, alpha: 1.0),    // 亮白微暖
+                ear: NSColor(red: 0.24, green: 0.155, blue: 0.125, alpha: 1.0),    // 深巧克力耳
+                earRim: nil,
+                blush: NSColor(red: 0.99, green: 0.66, blue: 0.72, alpha: 1.0),    // 粉腮红
+                accent: NSColor(red: 0.21, green: 0.14, blue: 0.12, alpha: 1.0),   // 深棕五官
                 hasBrows: true,
-                hasCollar: true
+                hasScarf: true,
+                hasToeCaps: true
             )
 
             static let dudu = BuddyStyle(
-                body: NSColor(red: 0.80, green: 0.58, blue: 0.44, alpha: 1.0),     // 明亮焦糖奶茶棕
-                ear: NSColor(red: 0.46, green: 0.31, blue: 0.24, alpha: 1.0),      // 棕耳（比深描边略亮，两层区分）
-                blush: NSColor(red: 1.0, green: 0.78, blue: 0.36, alpha: 1.0),     // 饱和橘黄腮红
-                accent: NSColor(red: 0.30, green: 0.24, blue: 0.26, alpha: 1.0),   // 深青灰黑五官
+                body: NSColor(red: 0.84, green: 0.635, blue: 0.50, alpha: 1.0),    // 奶茶焦糖棕
+                ear: NSColor(red: 0.70, green: 0.48, blue: 0.35, alpha: 1.0),      // 焦糖内耳
+                earRim: NSColor(red: 0.33, green: 0.21, blue: 0.15, alpha: 1.0),   // 深棕描边环
+                blush: NSColor(red: 1.0, green: 0.72, blue: 0.33, alpha: 1.0),     // 橘黄腮红
+                accent: NSColor(red: 0.21, green: 0.14, blue: 0.12, alpha: 1.0),   // 深棕五官
                 hasBrows: false,
-                hasCollar: false
+                hasScarf: false,
+                hasToeCaps: false
             )
         }
 
-        /// 软胶/绒毛质感 PBR 材质：高粗糙度 + 零金属度模拟毛绒公仔表面，
-        /// 配合场景的环境光照产生柔和的明暗过渡，消除塑料拼接感。
-        /// clearcoat 加一层极淡的透明涂层，制造软软的高光边缘
+        /// 光滑搪胶质感 PBR 材质：中等粗糙度 + 零金属度模拟搪胶公仔表面
+        /// （参考图是光滑软胶而非绒毛），配合环境光照产生柔和的明暗过渡。
+        /// clearcoat 加一层极淡的透明涂层，制造柔和的高光边缘
         private static func matteMaterial(_ color: NSColor) -> SCNMaterial {
             let material = SCNMaterial()
             material.lightingModel = .physicallyBased
             material.diffuse.contents = color
             material.metalness.contents = 0.0
-            material.roughness.contents = 0.85          // 高粗糙 = 绒毛哑光
-            material.clearCoat.contents = 0.25          // 淡涂层高光，软胶质感
-            material.clearCoatRoughness.contents = 0.6
+            material.roughness.contents = 0.65          // 光滑软胶哑光
+            material.clearCoat.contents = 0.18          // 淡涂层高光，软胶质感
+            material.clearCoatRoughness.contents = 0.45
             material.diffuse.mipFilter = .linear
             return material
         }
@@ -501,8 +506,8 @@ struct SceneKitView: NSViewRepresentable {
         }
 
         /// 构建软胶熊猫/小熊角色（布布/一二共用建模，外观由 style 决定）。
-        /// 对照参考图：扁圆软胶身体、头身近乎连一体、顶部两只圆耳、大圆眼、
-        /// "w"形小嘴、圆腮红、连身小短手短脚、深棕脚尖。
+        /// 对照参考图（正面全身软胶公仔）：面包型大头、黑豆小圆眼、倔强怒眉（布布）、
+        /// "ω"小嘴、大圆腮红、梨形壮身体、粗短腿、深棕脚垫（布布）、脖围领巾+三瓣结（布布）。
         /// 节点分层专为动画设计：外层容器承接状态动画，
         /// 内层 bubu-model / bubu-head / bubu-eyes / 四肢节点承接微动作
         static func createBuddyNode(style: BuddyStyle) -> SCNNode {
@@ -513,132 +518,96 @@ struct SceneKitView: NSViewRepresentable {
             model.name = "bubu-model"
             containerNode.addChildNode(model)
 
-            // 全身 Z 压扁系数 —— 参考图是"捏扁的软陶浮雕"，不是饱满球公仔
-            let flat: Float = 0.72
+            // 身体 - 梨形壮躯干：单个 Y 拉长椭球（完整立体，不压扁），
+            // 顶部埋进头底消除"脖子缝"，底部盖住腿根
+            let torso = sphereNode(radius: 0.30, color: style.body, segments: 72)
+            torso.position = SCNVector3(0, -0.45, 0)
+            torso.scale = SCNVector3(1.55, 1.13, 1.12)
+            model.addChildNode(torso)
 
-            // 身体 - 圆肚（baby 比例但身体比先前略大一些），横向略宽、Z 压扁贴合浮雕感
-            let body = sphereNode(radius: 0.285, color: style.body, segments: 72)
-            body.position = SCNVector3(0, -0.42, 0)
-            body.scale = SCNVector3(1.10, 1.0, flat)
-            model.addChildNode(body)
-
-            // 胸前深棕小领结（布布特征）：两枚小圆点叠成蝴蝶结轮廓
-            if style.hasCollar {
-                for side in [CGFloat(-1), CGFloat(1)] {
-                    let loop = sphereNode(radius: 0.028, color: style.accent, segments: 20)
-                    loop.position = SCNVector3(side * 0.032, -0.20, 0.20)
-                    loop.scale = SCNVector3(1.0, 1.2, 0.5)
-                    model.addChildNode(loop)
-                }
-                let center = sphereNode(radius: 0.02, color: style.accent, segments: 16)
-                center.position = SCNVector3(0, -0.20, 0.22)
-                center.scale = SCNVector3(1.0, 1.0, 0.6)
-                model.addChildNode(center)
-            }
-
-            // 头部组（歪头/张望动画的旋转轴心）。baby 比例：头极大、下沿与身体重叠成一团
+            // 头部组（歪头/张望动画的旋转轴心）。头占全身一大半的 baby 比例
             let head = SCNNode()
             head.name = "bubu-head"
-            head.position = SCNVector3(0, 0.22, 0.0)
+            head.position = SCNVector3(0, 0.30, 0.0)
             model.addChildNode(head)
 
-            // 头 - 巨大扁圆面板（baby 比例：头占身高一大半），略横椭圆头顶圆润 + Z 强压扁
-            // （参考图正面几乎全是一张扁脸）
+            // 头 - 宽阔面包型：横向宽、纵向略高、Z 只微收（参考图是饱满立体不是浮雕）
             let face = sphereNode(radius: 0.55, color: style.body, segments: 80)
-            face.scale = SCNVector3(1.06, 1.0, flat)
+            face.scale = SCNVector3(1.22, 1.02, 0.92)
             head.addChildNode(face)
 
-            // 脸颊鼓包 - 在两侧下方叠一层同色球，让脸颊更饱满圆润（婴儿肥），同样压扁
+            // 脸颊鼓包 - 两侧下方叠同色球，撑出下半张脸的方圆感（婴儿肥）
             for side in [CGFloat(-1), CGFloat(1)] {
                 let cheek = sphereNode(radius: 0.30, color: style.body, segments: 48)
-                cheek.position = SCNVector3(side * 0.215, -0.13, 0.06)
-                cheek.scale = SCNVector3(1.0, 0.9, flat * 0.85)
+                cheek.position = SCNVector3(side * 0.27, -0.16, 0.04)
+                cheek.scale = SCNVector3(1.0, 0.92, 0.86)
                 head.addChildNode(cheek)
             }
 
-            // 耳朵 - 贴头顶两侧的小半圆凸起 + 深色描边环（参考图像纽扣一样贴上去）。
-            // 各挂在可动耳根节点下（承接耳朵抖动微动作），节点名保持 bubu-ear-l/r 供微动作绑定
+            // 耳朵 - 头顶两角的圆耳：布布=实心深棕；一二=深棕描边环+焦糖内耳。
+            // 各挂在可动耳根节点下（承接耳朵抖动微动作）
             for side in [CGFloat(-1), CGFloat(1)] {
                 let earPivot = SCNNode()
                 earPivot.name = side < 0 ? "bubu-ear-l" : "bubu-ear-r"
-                earPivot.position = SCNVector3(side * 0.31, 0.42, 0.02)  // 耳根贴头顶两侧
+                earPivot.position = SCNVector3(side * 0.38, 0.47, 0.0)
                 head.addChildNode(earPivot)
 
-                // 深色描边底盘（明显比耳大一圈，露出完整描边环 = 纽扣观感）
-                let rim = sphereNode(radius: 0.165, color: style.accent, segments: 40)
-                rim.position = SCNVector3(0, 0.02, 0.0)
-                rim.scale = SCNVector3(1.0, 0.95, 0.5)
-                earPivot.addChildNode(rim)
+                if let rimColor = style.earRim {
+                    // 描边耳：深色底盘 + 前置焦糖内耳，正面露出一圈描边
+                    let rim = sphereNode(radius: 0.17, color: rimColor, segments: 40)
+                    rim.scale = SCNVector3(1.0, 0.95, 0.72)
+                    earPivot.addChildNode(rim)
 
-                // 耳身（前置于描边之上、更小，露出四周一圈深描边）
-                let ear = sphereNode(radius: 0.115, color: style.ear, segments: 44)
-                ear.position = SCNVector3(0, 0.02, 0.05)
-                ear.scale = SCNVector3(1.0, 0.95, 0.55)
-                earPivot.addChildNode(ear)
+                    let inner = sphereNode(radius: 0.115, color: style.ear, segments: 40)
+                    inner.position = SCNVector3(0, 0, 0.07)
+                    inner.scale = SCNVector3(1.0, 0.95, 0.72)
+                    earPivot.addChildNode(inner)
+                } else {
+                    // 实心深棕圆耳（布布）
+                    let ear = sphereNode(radius: 0.17, color: style.ear, segments: 44)
+                    ear.scale = SCNVector3(1.0, 0.95, 0.72)
+                    earPivot.addChildNode(ear)
+                }
             }
 
-            // 眼睛组（眨眼动画对该组做 Y 轴压扁）。big glossy black eyes：又大又圆、间距宽、水汪汪
+            // 眼睛组（眨眼动画对该组做 Y 轴压扁）。
+            // 参考图是小而实的黑豆眼：不贴白高光片，靠材质光泽自然出高光点
             let eyes = SCNNode()
             eyes.name = "bubu-eyes"
-            eyes.position = SCNVector3(0, -0.01, 0.42)
+            eyes.position = SCNVector3(0, -0.02, 0.46)
             head.addChildNode(eyes)
 
-            for xOffset in [CGFloat(-0.185), CGFloat(0.185)] {
-                // 眼珠 - 更大更圆的黑亮竖椭圆豆（参考图眼睛饱满水汪汪）
-                let eye = sphereNode(radius: 0.10, color: style.accent, segments: 40)
+            for xOffset in [CGFloat(-0.21), CGFloat(0.21)] {
+                let eye = sphereNode(radius: 0.072, color: style.accent, segments: 40)
                 eye.position = SCNVector3(xOffset, 0, 0)
-                eye.scale = SCNVector3(0.94, 1.12, 0.62)
-                // 眼珠自带一点光泽（降低粗糙度），更像参考图黑亮的果冻眼
-                eye.geometry?.firstMaterial?.roughness.contents = 0.4
-                eye.geometry?.firstMaterial?.clearCoat.contents = 0.65
+                eye.scale = SCNVector3(1.0, 1.12, 0.55)
+                eye.geometry?.firstMaterial?.roughness.contents = 0.3
+                eye.geometry?.firstMaterial?.clearCoat.contents = 0.5
                 eyes.addChildNode(eye)
-
-                // 大高光 - 白色亮斑（自发光，始终明亮），水汪汪的关键
-                let highlightGeometry = SCNSphere(radius: 0.036)
-                let highlightMaterial = SCNMaterial()
-                highlightMaterial.lightingModel = .constant
-                highlightMaterial.diffuse.contents = NSColor.white
-                highlightGeometry.materials = [highlightMaterial]
-                let highlight = SCNNode(geometry: highlightGeometry)
-                highlight.position = SCNVector3(xOffset + 0.03, 0.042, 0.08)
-                eyes.addChildNode(highlight)
-
-                // 小副高光（下方一小点，让眼睛更灵动透亮）
-                let subGeo = SCNSphere(radius: 0.016)
-                let subMat = SCNMaterial()
-                subMat.lightingModel = .constant
-                subMat.diffuse.contents = NSColor.white
-                subGeo.materials = [subMat]
-                let sub = SCNNode(geometry: subGeo)
-                sub.position = SCNVector3(xOffset - 0.024, -0.04, 0.08)
-                eyes.addChildNode(sub)
             }
 
-            // 眉毛 - 呆萌小斜眉（布布特征）：短、平、只微微内低，是"倔强呆萌"不是"凶"。
-            // 随加宽的眼睛外移到眼睛正上方
+            // 眉毛 - 倔强怒眉（布布特征）：粗短、倾角大（0.48 rad ≈ 27°）、紧贴眼睛上方
             if style.hasBrows {
                 for side in [CGFloat(-1), CGFloat(1)] {
                     let brow = SCNNode(geometry: {
-                        let g = SCNCapsule(capRadius: 0.013, height: 0.06)
+                        let g = SCNCapsule(capRadius: 0.018, height: 0.11)
                         g.materials = [matteMaterial(style.accent)]
                         return g
                     }())
-                    brow.position = SCNVector3(side * 0.175, 0.135, 0.40)
-                    // 只微微内低（0.22 rad ≈ 12.6°），呆萌不凶
-                    brow.eulerAngles = SCNVector3(0, 0, Float(side) * 0.22 - Float.pi / 2)
+                    brow.position = SCNVector3(side * 0.21, 0.09, 0.47)
+                    brow.eulerAngles = SCNVector3(0, 0, Float(side) * 0.48 - Float.pi / 2)
                     head.addChildNode(brow)
                 }
             }
 
-            // 嘴 - tiny w-shaped mouth：柔和上扬的 "ω" 小嘴（呆萌天真笑）：
-            // 中间一个小圆凸 + 两侧各一道向上外翘的短弧，形成 ω 轮廓
+            // 嘴 - 柔和上扬的 "ω" 小嘴：中间小圆凸 + 两侧各一道向上外翘的短弧
             let mouth = SCNNode()
-            mouth.position = SCNVector3(0, -0.15, 0.44)
+            mouth.position = SCNVector3(0, -0.15, 0.50)
             let mouthMat = matteMaterial(style.accent)
 
             // 中间小圆凸（ω 的中峰）
             let bump = SCNNode(geometry: {
-                let g = SCNSphere(radius: 0.011)
+                let g = SCNSphere(radius: 0.013)
                 g.materials = [mouthMat]
                 return g
             }())
@@ -648,62 +617,95 @@ struct SceneKitView: NSViewRepresentable {
             // 两侧上翘短弧
             for side in [CGFloat(-1), CGFloat(1)] {
                 let seg = SCNNode(geometry: {
-                    let g = SCNCapsule(capRadius: 0.0072, height: 0.05)
+                    let g = SCNCapsule(capRadius: 0.009, height: 0.064)
                     g.materials = [mouthMat]
                     return g
                 }())
-                seg.position = SCNVector3(side * 0.028, 0.006, 0)
-                // 外端上扬（负角度让弧朝上翘），呆萌笑
+                seg.position = SCNVector3(side * 0.034, 0.008, 0)
                 seg.eulerAngles = SCNVector3(0, 0, Float(side) * -1.25)
                 mouth.addChildNode(seg)
             }
             head.addChildNode(mouth)
 
-            // 腮红 - 下巴两侧橘黄实心大圆斑（参考图不透明、大、偏下、更外，在眼下靠脸颊外缘）
-            for xOffset in [CGFloat(-0.36), CGFloat(0.36)] {
-                let blushGeo = SCNSphere(radius: 0.10)
+            // 腮红 - 脸颊外缘大圆斑（X 放大补偿脸面弧度的视觉收窄）
+            for xOffset in [CGFloat(-0.40), CGFloat(0.40)] {
+                let blushGeo = SCNSphere(radius: 0.12)
                 blushGeo.segmentCount = 32
                 blushGeo.materials = [matteMaterial(style.blush)]
                 let blush = SCNNode(geometry: blushGeo)
-                blush.position = SCNVector3(xOffset, -0.20, 0.28)
-                blush.scale = SCNVector3(1.0, 1.05, 0.22)
+                blush.position = SCNVector3(xOffset, -0.20, 0.40)
+                blush.scale = SCNVector3(1.2, 1.0, 0.30)
                 head.addChildNode(blush)
             }
 
-            // 手臂 - short tiny arms：短小圆胖胳膊，贴在小身体两侧，挂在肩部轴心节点下
+            // 领巾（布布特征）- 贴胸两段近水平斜带模拟绕颈 + 胸前三瓣结
+            if style.hasScarf {
+                for side in [CGFloat(-1), CGFloat(1)] {
+                    let strap = SCNNode(geometry: {
+                        let g = SCNCapsule(capRadius: 0.028, height: 0.26)
+                        g.materials = [matteMaterial(style.accent)]
+                        return g
+                    }())
+                    strap.position = SCNVector3(side * 0.17, -0.25, 0.24)
+                    strap.eulerAngles = SCNVector3(-0.15, Float(side) * 0.55, Float(side) * 1.48)
+                    model.addChildNode(strap)
+                }
+
+                // 三瓣结：两瓣在上、一尖垂下
+                for side in [CGFloat(-1), CGFloat(1)] {
+                    let lobe = sphereNode(radius: 0.065, color: style.accent, segments: 24)
+                    lobe.position = SCNVector3(side * 0.055, -0.27, 0.32)
+                    lobe.scale = SCNVector3(1.0, 1.15, 0.6)
+                    model.addChildNode(lobe)
+                }
+                let tip = sphereNode(radius: 0.05, color: style.accent, segments: 24)
+                tip.position = SCNVector3(0, -0.355, 0.31)
+                tip.scale = SCNVector3(1.0, 1.3, 0.55)
+                model.addChildNode(tip)
+            }
+
+            // 手臂 - 粗短垂臂：顶端埋进躯干侧面（消除方肩），微微内收下垂
             for side in [CGFloat(-1), CGFloat(1)] {
                 let shoulder = SCNNode()
                 shoulder.name = side < 0 ? "bubu-arm-l" : "bubu-arm-r"
-                shoulder.position = SCNVector3(side * 0.235, -0.32, 0.03)  // 随身体加大外移下移
+                shoulder.position = SCNVector3(side * 0.41, -0.33, 0.02)
                 model.addChildNode(shoulder)
 
-                let armGeometry = SCNCapsule(capRadius: 0.058, height: 0.13)
+                let armGeometry = SCNCapsule(capRadius: 0.095, height: 0.26)
                 armGeometry.materials = [matteMaterial(style.body)]
                 let arm = SCNNode(geometry: armGeometry)
-                arm.position = SCNVector3(side * 0.012, -0.045, 0.0)
-                arm.scale = SCNVector3(1.0, 1.0, flat)   // 手臂随全身压扁
-                arm.eulerAngles = SCNVector3(0, 0, Float(side) * -0.26)
+                arm.position = SCNVector3(side * 0.015, -0.11, 0.04)
+                arm.eulerAngles = SCNVector3(-0.10, 0, Float(side) * -0.14)
                 shoulder.addChildNode(arm)
             }
 
-            // 脚 - short tiny legs：连身小短脚，脚尖深棕；踝部轴心承接踢腿
+            // 腿脚 - 粗短腿柱大半藏在躯干里 + 前伸圆脚；髋部轴心承接踢腿。
+            // 布布脚前端叠深棕脚垫
             for side in [CGFloat(-1), CGFloat(1)] {
-                let ankle = SCNNode()
-                ankle.name = side < 0 ? "bubu-foot-l" : "bubu-foot-r"
-                ankle.position = SCNVector3(side * 0.135, -0.66, 0.03)  // 随身体加大外移下移
-                model.addChildNode(ankle)
+                let hip = SCNNode()
+                hip.name = side < 0 ? "bubu-foot-l" : "bubu-foot-r"
+                hip.position = SCNVector3(side * 0.20, -0.60, 0.01)
+                model.addChildNode(hip)
 
-                // 脚掌（身体同色）
-                let foot = sphereNode(radius: 0.092, color: style.body, segments: 32)
-                foot.position = SCNVector3(0, 0.0, 0.02)
-                foot.scale = SCNVector3(0.95, 0.6, 1.1)
-                ankle.addChildNode(foot)
+                let legGeometry = SCNCapsule(capRadius: 0.115, height: 0.28)
+                legGeometry.materials = [matteMaterial(style.body)]
+                let leg = SCNNode(geometry: legGeometry)
+                leg.position = SCNVector3(0, -0.10, 0.01)
+                hip.addChildNode(leg)
 
-                // 脚尖深棕小块
-                let toe = sphereNode(radius: 0.044, color: style.accent, segments: 24)
-                toe.position = SCNVector3(0, -0.01, 0.075)
-                toe.scale = SCNVector3(1.0, 0.7, 0.7)
-                ankle.addChildNode(toe)
+                // 脚掌（身体同色，向前探出）
+                let foot = sphereNode(radius: 0.125, color: style.body, segments: 32)
+                foot.position = SCNVector3(0, -0.20, 0.05)
+                foot.scale = SCNVector3(1.0, 0.60, 1.20)
+                hip.addChildNode(foot)
+
+                // 深棕脚垫（布布特征）
+                if style.hasToeCaps {
+                    let toe = sphereNode(radius: 0.065, color: style.accent, segments: 24)
+                    toe.position = SCNVector3(0, -0.21, 0.15)
+                    toe.scale = SCNVector3(1.1, 0.72, 0.9)
+                    hip.addChildNode(toe)
+                }
             }
 
             return containerNode
