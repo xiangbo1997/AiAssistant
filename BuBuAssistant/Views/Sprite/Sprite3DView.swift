@@ -493,7 +493,7 @@ struct SceneKitView: NSViewRepresentable {
             material.metalness.contents = 0.0
             material.roughness.contents = 0.65          // 光滑软胶哑光
             material.clearCoat.contents = 0.18          // 淡涂层高光，软胶质感
-            material.clearCoatRoughness.contents = 0.45
+            material.clearCoatRoughness.contents = 0.55  // 涂层高粗糙 = 高光更宽更柔（参考图的大面积柔光）
             material.diffuse.mipFilter = .linear
             return material
         }
@@ -578,7 +578,7 @@ struct SceneKitView: NSViewRepresentable {
             head.addChildNode(eyes)
 
             for xOffset in [CGFloat(-0.21), CGFloat(0.21)] {
-                let eye = sphereNode(radius: 0.072, color: style.accent, segments: 40)
+                let eye = sphereNode(radius: 0.075, color: style.accent, segments: 40)
                 eye.position = SCNVector3(xOffset, 0, 0)
                 eye.scale = SCNVector3(1.0, 1.12, 0.55)
                 eye.geometry?.firstMaterial?.roughness.contents = 0.3
@@ -668,13 +668,13 @@ struct SceneKitView: NSViewRepresentable {
             for side in [CGFloat(-1), CGFloat(1)] {
                 let shoulder = SCNNode()
                 shoulder.name = side < 0 ? "bubu-arm-l" : "bubu-arm-r"
-                shoulder.position = SCNVector3(side * 0.41, -0.33, 0.02)
+                shoulder.position = SCNVector3(side * 0.405, -0.35, 0.02)
                 model.addChildNode(shoulder)
 
                 let armGeometry = SCNCapsule(capRadius: 0.095, height: 0.26)
                 armGeometry.materials = [matteMaterial(style.body)]
                 let arm = SCNNode(geometry: armGeometry)
-                arm.position = SCNVector3(side * 0.015, -0.11, 0.04)
+                arm.position = SCNVector3(side * 0.015, -0.10, 0.04)
                 arm.eulerAngles = SCNVector3(-0.10, 0, Float(side) * -0.14)
                 shoulder.addChildNode(arm)
             }
@@ -716,14 +716,10 @@ struct SceneKitView: NSViewRepresentable {
         static func createCutePlaceholder() -> SCNNode {
             let containerNode = SCNNode()
 
-            // 身体 - 圆润的椭球
+            // 身体 - 圆润的椭球（与预设角色统一的软胶 PBR 材质，旧 Blinn 材质在 IBL 场景里显塑料感）
             let bodyGeometry = SCNSphere(radius: 0.5)
             bodyGeometry.segmentCount = 48
-            let bodyMaterial = SCNMaterial()
-            bodyMaterial.diffuse.contents = NSColor(red: 1.0, green: 0.85, blue: 0.7, alpha: 1.0) // 暖米色
-            bodyMaterial.specular.contents = NSColor.white
-            bodyMaterial.shininess = 0.3
-            bodyGeometry.materials = [bodyMaterial]
+            bodyGeometry.materials = [matteMaterial(NSColor(red: 1.0, green: 0.85, blue: 0.7, alpha: 1.0))] // 暖米色
 
             let bodyNode = SCNNode(geometry: bodyGeometry)
             bodyNode.scale = SCNVector3(1.0, 1.1, 0.9)
@@ -774,17 +770,13 @@ struct SceneKitView: NSViewRepresentable {
 
             // 眼白
             let whiteGeometry = SCNSphere(radius: 0.08)
-            let whiteMaterial = SCNMaterial()
-            whiteMaterial.diffuse.contents = NSColor.white
-            whiteGeometry.materials = [whiteMaterial]
+            whiteGeometry.materials = [matteMaterial(.white)]
             let whiteNode = SCNNode(geometry: whiteGeometry)
             eyeContainer.addChildNode(whiteNode)
 
             // 瞳孔
             let pupilGeometry = SCNSphere(radius: 0.05)
-            let pupilMaterial = SCNMaterial()
-            pupilMaterial.diffuse.contents = NSColor(red: 0.2, green: 0.15, blue: 0.1, alpha: 1.0)
-            pupilGeometry.materials = [pupilMaterial]
+            pupilGeometry.materials = [matteMaterial(NSColor(red: 0.2, green: 0.15, blue: 0.1, alpha: 1.0))]
             let pupilNode = SCNNode(geometry: pupilGeometry)
             pupilNode.position = SCNVector3(0, 0, 0.04)
             eyeContainer.addChildNode(pupilNode)
@@ -805,8 +797,7 @@ struct SceneKitView: NSViewRepresentable {
         static func createBlush() -> SCNNode {
             let blushGeometry = SCNSphere(radius: 0.06)
             blushGeometry.segmentCount = 24
-            let blushMaterial = SCNMaterial()
-            blushMaterial.diffuse.contents = NSColor(red: 1.0, green: 0.6, blue: 0.6, alpha: 0.6)
+            let blushMaterial = matteMaterial(NSColor(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0))
             blushMaterial.transparency = 0.6
             blushGeometry.materials = [blushMaterial]
 
@@ -818,9 +809,7 @@ struct SceneKitView: NSViewRepresentable {
         static func createMouth() -> SCNNode {
             // 简单的微笑嘴巴用小球表示
             let mouthGeometry = SCNTorus(ringRadius: 0.06, pipeRadius: 0.015)
-            let mouthMaterial = SCNMaterial()
-            mouthMaterial.diffuse.contents = NSColor(red: 0.8, green: 0.4, blue: 0.4, alpha: 1.0)
-            mouthGeometry.materials = [mouthMaterial]
+            mouthGeometry.materials = [matteMaterial(NSColor(red: 0.8, green: 0.4, blue: 0.4, alpha: 1.0))]
 
             let mouthNode = SCNNode(geometry: mouthGeometry)
             mouthNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
@@ -830,18 +819,14 @@ struct SceneKitView: NSViewRepresentable {
 
         static func createEar() -> SCNNode {
             let earGeometry = SCNSphere(radius: 0.12)
-            let earMaterial = SCNMaterial()
-            earMaterial.diffuse.contents = NSColor(red: 1.0, green: 0.85, blue: 0.7, alpha: 1.0)
-            earGeometry.materials = [earMaterial]
+            earGeometry.materials = [matteMaterial(NSColor(red: 1.0, green: 0.85, blue: 0.7, alpha: 1.0))]
 
             let earNode = SCNNode(geometry: earGeometry)
             earNode.scale = SCNVector3(0.8, 1.2, 0.5)
 
             // 内耳
             let innerEarGeometry = SCNSphere(radius: 0.06)
-            let innerEarMaterial = SCNMaterial()
-            innerEarMaterial.diffuse.contents = NSColor(red: 1.0, green: 0.7, blue: 0.7, alpha: 1.0)
-            innerEarGeometry.materials = [innerEarMaterial]
+            innerEarGeometry.materials = [matteMaterial(NSColor(red: 1.0, green: 0.7, blue: 0.7, alpha: 1.0))]
             let innerEarNode = SCNNode(geometry: innerEarGeometry)
             innerEarNode.position = SCNVector3(0, 0, 0.05)
             innerEarNode.scale = SCNVector3(0.8, 1.0, 0.3)
