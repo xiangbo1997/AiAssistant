@@ -137,16 +137,17 @@ struct SpriteContainerView: View {
         ZStack {
             // 根据设置选择 2D 或 3D 精灵视图
             if settingsViewModel.use3DSprite {
-                Sprite3DView(viewModel: spriteViewModel)
-                    .onTapGesture(count: 2) {
-                        handleDoubleTap()
-                    }
-                    .onTapGesture(count: 1) {
-                        handleTap()
-                    }
-                    .contextMenu {
-                        contextMenuContent
-                    }
+                // 3D 模式单击由场景内命中检测接管：点到身体部位触发互动，
+                // 未命中角色时回落到原有单击行为（取词/打开面板）
+                Sprite3DView(viewModel: spriteViewModel, onBackgroundTap: {
+                    handleTap()
+                })
+                .onTapGesture(count: 2) {
+                    handleDoubleTap()
+                }
+                .contextMenu {
+                    contextMenuContent
+                }
             } else {
                 SpriteView(viewModel: spriteViewModel)
                     .onTapGesture(count: 2) {

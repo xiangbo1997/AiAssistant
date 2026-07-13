@@ -14,6 +14,8 @@ import SceneKit
 struct SceneKitView: NSViewRepresentable {
     @ObservedObject var viewModel: SpriteViewModel
     var animationState: SpriteAnimationState
+    /// 点击未命中角色部位时的回落行为（由外层注入：取词/打开面板）
+    var onBackgroundTap: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -33,13 +35,21 @@ struct SceneKitView: NSViewRepresentable {
         // 性能：精灵是小尺寸待机动画，30fps 足够流畅，可显著降低 GPU 占用
         scnView.preferredFramesPerSecond = 30
 
+        // 部位点击互动：命中检测由 Coordinator 处理（点头歪头、点耳抖耳、点肚子弹一弹…），
+        // 未命中角色时回落到原有的单击行为（取词/打开面板）
+        let click = NSClickGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handleSceneClick(_:)))
+        click.numberOfClicksRequired = 1
+        click.delaysPrimaryMouseButtonEvents = false  // 不拦截按下事件，保持窗口可拖动
+        scnView.addGestureRecognizer(click)
+
         return scnView
     }
 
     func updateNSView(_ scnView: SCNView, context: Context) {
         context.coordinator.updateCharacter(viewModel.currentCharacter)
         context.coordinator.updateAnimation(for: animationState)
-        context.coordinator.updateScale(viewModel.scale)
+        context.coordinator.onBackgroundTap = onBackgroundTap
     }
 
     func makeCoordinator() -> Coordinator {
@@ -48,11 +58,15 @@ struct SceneKitView: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    class Coordinator {
+    class Coordinator: NSObject {
         let scene: SCNScene
         private(set) var characterNode: SCNNode
         let cameraNode: SCNNode
         var currentAnimation: SpriteAnimationState = .idle
+
+        // 部位点击互动的依赖：气泡/睡眠计时走 viewModel，未命中角色时回落原单击行为
+        private weak var viewModel: SpriteViewModel?
+        var onBackgroundTap: (() -> Void)?
 
         // 当前角色标识（切换角色时据此重建 3D 模型）
         private var currentCharacterID: UUID
@@ -69,6 +83,7 @@ struct SceneKitView: NSViewRepresentable {
         private var footRNode: SCNNode?
 
         init(viewModel: SpriteViewModel) {
+            self.viewModel = viewModel
             scene = SCNScene()
 
             // 创建角色节点
@@ -100,7 +115,7 @@ struct SceneKitView: NSViewRepresentable {
             cameraNode = SCNNode()
             cameraNode.camera = SCNCamera()
             cameraNode.camera?.fieldOfView = 40  // 收窄视角减轻透视畸变，更接近贴纸的正投影观感
-            cameraNode.position = SCNVector3(x: 0, y: 0.15, z: 3.1)
+            cameraNode.position = SCNVector3(x: 0, y: 0.15, z: 3.3)  // 留出头顶余量，跳跃/浮动不出画
             cameraNode.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(cameraNode)
 
@@ -150,6 +165,9 @@ struct SceneKitView: NSViewRepresentable {
             // 设置背景透明
             scene.background.contents = NSColor.clear
 
+            // NSObject 子类（点击手势 selector 需要）：存储属性就绪后先完成父类初始化
+            super.init()
+
             // 提取微动作子节点（状态动画在外层容器上 removeAllActions，
             // 挂在子节点上的微动作不受影响）
             bindMicroNodes()
@@ -170,6 +188,123 @@ struct SceneKitView: NSViewRepresentable {
             armRNode = characterNode.childNode(withName: "bubu-arm-r", recursively: true)
             footLNode = characterNode.childNode(withName: "bubu-foot-l", recursively: true)
             footRNode = characterNode.childNode(withName: "bubu-foot-r", recursively: true)
+        }
+
+        // MARK: - 部位点击互动
+
+        /// 可交互的身体部位
+        private enum BodyPart {
+            case head, ear, eyes, belly, arm, foot
+        }
+
+        /// 场景单击：命中角色部位则触发对应互动，否则回落到原有单击行为
+        @objc func handleSceneClick(_ recognizer: NSClickGestureRecognizer) {
+            // 双击的第二下交给上层的双击翻译流程，不重复触发互动
+            if let event = NSApp.currentEvent, event.clickCount > 1 { return }
+            guard let scnView = recognizer.view as? SCNView else { return }
+
+            let point = recognizer.location(in: scnView)
+            let hits = scnView.hitTest(point, options: nil)  // 默认按距离由近到远排序
+
+            if let part = hits.lazy.compactMap({ Self.interactivePart(for: $0.node) }).first {
+                react(to: part)
+            } else {
+                onBackgroundTap?()
+            }
+        }
+
+        /// 沿命中节点向上找已命名的部位节点（几何体挂在无名子节点上，名字在轴心节点上）
+        private static func interactivePart(for node: SCNNode) -> BodyPart? {
+            var current: SCNNode? = node
+            while let n = current {
+                switch n.name {
+                case "bubu-eyes": return .eyes
+                case "bubu-ear-l", "bubu-ear-r": return .ear
+                case "bubu-head": return .head
+                case "bubu-arm-l", "bubu-arm-r": return .arm
+                case "bubu-foot-l", "bubu-foot-r": return .foot
+                case "bubu-model": return .belly  // 躯干/领巾等未细分的部位都算肚子
+                default: current = n.parent
+                }
+            }
+            return nil
+        }
+
+        /// 触发部位互动：对应的小动作 + 一句短气泡（睡着时先被戳醒）
+        private func react(to part: BodyPart) {
+            guard let viewModel else { return }
+
+            if viewModel.animationState == .sleeping {
+                viewModel.wakeUp()
+                viewModel.showBubble(message: "呼哇…被戳醒了", type: .greeting, duration: 2.5)
+                return
+            }
+            viewModel.resetSleepTimer()
+
+            switch part {
+            case .head:
+                gestureHeadTilt()
+                say(["嘿嘿，摸头头~", "干嘛戳我脑袋呀"])
+            case .ear:
+                wiggleEarsOnce()
+                say(["耳朵痒痒的~", "别揪耳朵啦"])
+            case .eyes:
+                blinkNow()
+                say(["眨眨眼~", "看到你啦"])
+            case .belly:
+                bellyJiggle()
+                say(["咕噜咕噜~", "肚子不许戳！"])
+            case .arm:
+                gestureWave()
+                say(["握手握手~", "嗨呀~"])
+            case .foot:
+                gestureKickFeet()
+                say(["脚脚不给摸！", "踢踢踢~"])
+            }
+        }
+
+        /// 说一句互动短语；已有气泡在显示时保持沉默，不打断翻译结果等内容
+        private func say(_ lines: [String]) {
+            guard let viewModel, !viewModel.showBubble,
+                  let line = lines.randomElement() else { return }
+            viewModel.showBubble(message: line, type: .greeting, duration: 2.5)
+        }
+
+        /// 点眼睛：立即眨一次眼
+        private func blinkNow() {
+            eyesNode?.runAction(Coordinator.makeBlinkOnce(), forKey: "blink-now")
+        }
+
+        /// 点耳朵：双耳同时抖动一轮
+        private func wiggleEarsOnce() {
+            for (ear, side) in [(earLNode, CGFloat(1)), (earRNode, CGFloat(-1))] {
+                guard let ear else { continue }
+
+                let tilt = SCNAction.rotateBy(x: 0, y: 0, z: 0.28 * side, duration: 0.14)
+                tilt.timingMode = .easeOut
+                let back = SCNAction.rotateBy(x: 0, y: 0, z: -0.28 * side, duration: 0.22)
+                back.timingMode = .easeInEaseOut
+                ear.runAction(.sequence([tilt, back, tilt, back]), forKey: "wiggle-once")
+            }
+        }
+
+        /// 点肚子：果冻式的挤压回弹（挤扁 → 拉伸 → 轻微再挤，模拟软胶弹性）
+        private func bellyJiggle() {
+            guard let model = modelNode else { return }
+
+            func bounce(amount: CGFloat, duration: TimeInterval, squash: Bool) -> SCNAction {
+                SCNAction.customAction(duration: duration) { node, elapsed in
+                    let progress = elapsed / CGFloat(duration)
+                    let a = amount * sin(progress * .pi) * (squash ? 1 : -1)
+                    node.scale = SCNVector3(1 + a, 1 - a, 1 + a)
+                }
+            }
+
+            model.runAction(.sequence([
+                bounce(amount: 0.10, duration: 0.16, squash: true),
+                bounce(amount: 0.06, duration: 0.16, squash: false),
+                bounce(amount: 0.03, duration: 0.14, squash: true)
+            ]), forKey: "belly-jiggle")
         }
 
         /// 角色切换：重建 3D 模型并重新挂载动画（此前切换角色 3D 模型不会更新）
@@ -214,10 +349,8 @@ struct SceneKitView: NSViewRepresentable {
             }
         }
 
-        /// 眨眼：随机间隔 2.5~6 秒，偶尔连眨两次更传神
-        private func startBlinking() {
-            guard let eyes = eyesNode else { return }
-
+        /// 单次眨眼动作（闭眼-睁眼），供随机眨眼循环与点眼互动复用
+        private static func makeBlinkOnce() -> SCNAction {
             let close = SCNAction.customAction(duration: 0.07) { node, elapsed in
                 let progress = elapsed / 0.07
                 node.scale = SCNVector3(1, 1 - 0.88 * progress, 1)
@@ -226,7 +359,14 @@ struct SceneKitView: NSViewRepresentable {
                 let progress = elapsed / 0.09
                 node.scale = SCNVector3(1, 0.12 + 0.88 * progress, 1)
             }
-            let blinkOnce = SCNAction.sequence([close, open])
+            return SCNAction.sequence([close, open])
+        }
+
+        /// 眨眼：随机间隔 2.5~6 秒，偶尔连眨两次更传神
+        private func startBlinking() {
+            guard let eyes = eyesNode else { return }
+
+            let blinkOnce = Coordinator.makeBlinkOnce()
 
             let loop = SCNAction.repeatForever(.sequence([
                 .wait(duration: 4.0, withRange: 3.5),
@@ -436,9 +576,9 @@ struct SceneKitView: NSViewRepresentable {
             // 预设角色使用代码构建的软胶熊猫/小熊 3D 模型（有 usdz/scn 文件时优先加载文件）
             switch character.imageName {
             case "bubu":
-                return createBuddyNode(style: .bubu)   // 白熊猫（布布）
+                return createBuddyNode(style: .brownBear)   // 棕小熊（布布）
             case "yier":
-                return createBuddyNode(style: .dudu)   // 棕小熊（一二/嘟嘟）
+                return createBuddyNode(style: .whitePanda)  // 白熊猫（一二/伊尔）
             default:
                 // 自定义角色暂无 3D 模型：显示可爱占位符
                 return createCutePlaceholder()
@@ -448,30 +588,20 @@ struct SceneKitView: NSViewRepresentable {
         // MARK: - 软胶熊猫/小熊 3D 模型（布布/一二共用一套建模，配色与特征参数化）
 
         /// 角色外观参数（对照参考图采样）。
-        /// 布布 = 白熊猫（深棕实心圆耳 + 粉腮红 + 倔强怒眉 + 深棕领巾 + 深棕脚垫）；
-        /// 一二 = 棕小熊（深棕描边耳 + 橘黄腮红）
+        /// 布布 = 棕小熊（深棕描边耳 + 橘黄腮红）；
+        /// 一二/伊尔 = 白熊猫（深棕实心圆耳 + 粉腮红 + 倔强怒眉 + 深棕领巾 + 深棕脚垫）
         struct BuddyStyle {
             let body: NSColor       // 身体/头
             let ear: NSColor        // 耳朵主色
-            let earRim: NSColor?    // 耳朵描边环（一二有，布布是实心深耳）
+            let earRim: NSColor?    // 耳朵描边环（棕熊有，白熊猫是实心深耳）
             let blush: NSColor      // 腮红
             let accent: NSColor     // 眼/眉/嘴/领巾/脚垫
-            let hasBrows: Bool      // 倔强怒眉（布布特征）
-            let hasScarf: Bool      // 深棕领巾 + 胸前三瓣结（布布特征）
-            let hasToeCaps: Bool    // 深棕脚垫（布布特征）
+            let hasBrows: Bool      // 倔强怒眉（白熊猫特征）
+            let hasScarf: Bool      // 深棕领巾 + 胸前三瓣结（白熊猫特征）
+            let hasToeCaps: Bool    // 深棕脚垫（白熊猫特征）
 
-            static let bubu = BuddyStyle(
-                body: NSColor(red: 0.995, green: 0.99, blue: 0.98, alpha: 1.0),    // 亮白微暖
-                ear: NSColor(red: 0.24, green: 0.155, blue: 0.125, alpha: 1.0),    // 深巧克力耳
-                earRim: nil,
-                blush: NSColor(red: 0.99, green: 0.66, blue: 0.72, alpha: 1.0),    // 粉腮红
-                accent: NSColor(red: 0.21, green: 0.14, blue: 0.12, alpha: 1.0),   // 深棕五官
-                hasBrows: true,
-                hasScarf: true,
-                hasToeCaps: true
-            )
-
-            static let dudu = BuddyStyle(
+            /// 棕小熊（布布）
+            static let brownBear = BuddyStyle(
                 body: NSColor(red: 0.84, green: 0.635, blue: 0.50, alpha: 1.0),    // 奶茶焦糖棕
                 ear: NSColor(red: 0.70, green: 0.48, blue: 0.35, alpha: 1.0),      // 焦糖内耳
                 earRim: NSColor(red: 0.33, green: 0.21, blue: 0.15, alpha: 1.0),   // 深棕描边环
@@ -480,6 +610,18 @@ struct SceneKitView: NSViewRepresentable {
                 hasBrows: false,
                 hasScarf: false,
                 hasToeCaps: false
+            )
+
+            /// 白熊猫（一二/伊尔）
+            static let whitePanda = BuddyStyle(
+                body: NSColor(red: 0.995, green: 0.99, blue: 0.98, alpha: 1.0),    // 亮白微暖
+                ear: NSColor(red: 0.24, green: 0.155, blue: 0.125, alpha: 1.0),    // 深巧克力耳
+                earRim: nil,
+                blush: NSColor(red: 0.99, green: 0.66, blue: 0.72, alpha: 1.0),    // 粉腮红
+                accent: NSColor(red: 0.21, green: 0.14, blue: 0.12, alpha: 1.0),   // 深棕五官
+                hasBrows: true,
+                hasScarf: true,
+                hasToeCaps: true
             )
         }
 
@@ -845,8 +987,11 @@ struct SceneKitView: NSViewRepresentable {
 
         /// 应用状态动画（角色重建后也用它把当前状态重新挂到新节点上）
         private func applyAnimation(_ state: SpriteAnimationState) {
-            // 移除现有动画
+            // 移除现有动画并复位姿态：moveBy/rotate 型动画被中途打断会残留位移和倾斜
+            // （如睡眠的侧倾、待机浮动的高度），不复位会越切越歪、越飘越高
             characterNode.removeAllActions()
+            characterNode.position = SCNVector3Zero
+            characterNode.eulerAngles = SCNVector3Zero
 
             switch state {
             case .idle:
@@ -860,10 +1005,6 @@ struct SceneKitView: NSViewRepresentable {
             case .sleeping:
                 startSleepingAnimation()
             }
-        }
-
-        func updateScale(_ scale: CGFloat) {
-            characterNode.scale = SCNVector3(Float(scale), Float(scale), Float(scale))
         }
 
         // MARK: - 各状态动画
@@ -911,10 +1052,10 @@ struct SceneKitView: NSViewRepresentable {
         }
 
         func startHappyAnimation() {
-            // 跳跃动画
-            let jumpUp = SCNAction.moveBy(x: 0, y: 0.3, z: 0, duration: 0.2)
+            // 跳跃动画（高度控制在相机可视范围内，避免头顶出画）
+            let jumpUp = SCNAction.moveBy(x: 0, y: 0.2, z: 0, duration: 0.2)
             jumpUp.timingMode = .easeOut
-            let jumpDown = SCNAction.moveBy(x: 0, y: -0.3, z: 0, duration: 0.2)
+            let jumpDown = SCNAction.moveBy(x: 0, y: -0.2, z: 0, duration: 0.2)
             jumpDown.timingMode = .easeIn
             let jumpSequence = SCNAction.sequence([jumpUp, jumpDown])
             let jumpRepeat = SCNAction.repeat(jumpSequence, count: 3)
@@ -936,8 +1077,8 @@ struct SceneKitView: NSViewRepresentable {
             let breatheSequence = SCNAction.sequence([breatheIn, breatheOut])
             let breatheForever = SCNAction.repeatForever(breatheSequence)
 
-            // 轻微倾斜
-            let tilt = SCNAction.rotateTo(x: 0, y: 0, z: 0.1, duration: 1.0)
+            // 轻微倾斜（角度收小，太歪像出 bug；唤醒时由 applyAnimation 复位）
+            let tilt = SCNAction.rotateTo(x: 0, y: 0, z: 0.05, duration: 1.0)
 
             characterNode.runAction(SCNAction.group([breatheForever, tilt]))
         }
@@ -948,6 +1089,14 @@ struct SceneKitView: NSViewRepresentable {
 
 struct Sprite3DView: View {
     @ObservedObject var viewModel: SpriteViewModel
+    /// 点击未命中角色部位时的回落行为（取词/打开面板），由 SpriteContainerView 注入
+    var onBackgroundTap: (() -> Void)? = nil
+
+    /// 精灵区域尺寸：跟 2D 模式一致，缩放靠放大视图而不是放大场景节点
+    /// （放大节点会超出相机视野截掉头顶）；上限对齐窗口宽度 280
+    private var spriteSize: CGFloat {
+        min(150 * viewModel.scale, 280)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -970,15 +1119,19 @@ struct Sprite3DView: View {
 
             // 3D 精灵区域（底部固定）
             ZStack {
-                SceneKitView(viewModel: viewModel, animationState: viewModel.animationState)
-                    .frame(width: 150, height: 150)
-                    .opacity(viewModel.opacity)
+                SceneKitView(
+                    viewModel: viewModel,
+                    animationState: viewModel.animationState,
+                    onBackgroundTap: onBackgroundTap
+                )
+                .frame(width: spriteSize, height: spriteSize)
+                .opacity(viewModel.opacity)
 
                 // 拖拽高亮
                 if viewModel.isDragOver {
                     RoundedRectangle(cornerRadius: 20)
                         .stroke(BuBuColors.skyBlue, lineWidth: 3)
-                        .frame(width: 120, height: 120)
+                        .frame(width: spriteSize * 0.8, height: spriteSize * 0.8)
                         .scaleEffect(1.1)
                         .animation(.easeInOut(duration: 0.2), value: viewModel.isDragOver)
                 }
@@ -995,7 +1148,7 @@ struct Sprite3DView: View {
                         .offset(x: 60, y: 0)
                 }
             }
-            .frame(height: 150)
+            .frame(height: spriteSize)
         }
     }
 }
