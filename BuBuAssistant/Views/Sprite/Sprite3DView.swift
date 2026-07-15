@@ -14,8 +14,11 @@ import SceneKit
 struct SceneKitView: NSViewRepresentable {
     @ObservedObject var viewModel: SpriteViewModel
     var animationState: SpriteAnimationState
+    var facingDirection: CGFloat
     /// 点击未命中角色部位时的回落行为（由外层注入：取词/打开面板）
     var onBackgroundTap: (() -> Void)? = nil
+    var onBodyPartTap: ((SpriteBodyPart) -> Void)? = nil
+    var onDoubleTap: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -37,10 +40,20 @@ struct SceneKitView: NSViewRepresentable {
 
         // 部位点击互动：命中检测由 Coordinator 处理（点头歪头、点耳抖耳、点肚子弹一弹…），
         // 未命中角色时回落到原有的单击行为（取词/打开面板）
-        let click = NSClickGestureRecognizer(target: context.coordinator,
-                                             action: #selector(Coordinator.handleSceneClick(_:)))
+        let click = SceneSingleClickGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleSceneClick(_:))
+        )
         click.numberOfClicksRequired = 1
         click.delaysPrimaryMouseButtonEvents = false  // 不拦截按下事件，保持窗口可拖动
+
+        let doubleClick = NSClickGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleSceneDoubleClick(_:))
+        )
+        doubleClick.numberOfClicksRequired = 2
+        doubleClick.delaysPrimaryMouseButtonEvents = false
+        scnView.addGestureRecognizer(doubleClick)
         scnView.addGestureRecognizer(click)
 
         return scnView
@@ -48,8 +61,11 @@ struct SceneKitView: NSViewRepresentable {
 
     func updateNSView(_ scnView: SCNView, context: Context) {
         context.coordinator.updateCharacter(viewModel.currentCharacter)
+        context.coordinator.updateFacingDirection(facingDirection)
         context.coordinator.updateAnimation(for: animationState)
         context.coordinator.onBackgroundTap = onBackgroundTap
+        context.coordinator.onBodyPartTap = onBodyPartTap
+        context.coordinator.onDoubleTap = onDoubleTap
     }
 
     func makeCoordinator() -> Coordinator {
@@ -67,6 +83,8 @@ struct SceneKitView: NSViewRepresentable {
         // 部位点击互动的依赖：气泡/睡眠计时走 viewModel，未命中角色时回落原单击行为
         private weak var viewModel: SpriteViewModel?
         var onBackgroundTap: (() -> Void)?
+        var onBodyPartTap: ((SpriteBodyPart) -> Void)?
+        var onDoubleTap: (() -> Void)?
 
         // 当前角色标识（切换角色时据此重建 3D 模型）
         private var currentCharacterID: UUID
@@ -81,6 +99,22 @@ struct SceneKitView: NSViewRepresentable {
         private var armRNode: SCNNode?
         private var footLNode: SCNNode?
         private var footRNode: SCNNode?
+        private var illustratedSpriteNode: SCNNode?
+        private var illustratedMorpher: SCNMorpher?
+        private var illustratedBaseImage: NSImage?
+        private var illustratedSleepImage: NSImage?
+        private var illustratedBaseAspect: CGFloat = 1
+        private var illustratedWaveFrames: [NSImage] = []
+        private var facingDirection: CGFloat = 1
+
+        private enum IllustratedMorphTarget: Int, CaseIterable {
+            case waveRaised
+            case waveSide
+            case leftStep
+            case rightStep
+            case blink
+            case talk
+        }
 
         init(viewModel: SpriteViewModel) {
             self.viewModel = viewModel
@@ -94,14 +128,14 @@ struct SceneKitView: NSViewRepresentable {
 
             // 地面软阴影：静态半透明圆片替代真实阴影贴图（性能考虑不开 shadow map），
             // 随浮动节奏轻微缩放，制造"离地远近"的错觉
-            let shadowGeometry = SCNCylinder(radius: 0.34, height: 0.005)
+            let shadowGeometry = SCNCylinder(radius: 0.40, height: 0.005)
             let shadowMaterial = SCNMaterial()
-            shadowMaterial.diffuse.contents = NSColor(calibratedRed: 0.25, green: 0.18, blue: 0.16, alpha: 0.22)
+            shadowMaterial.diffuse.contents = NSColor(calibratedRed: 0.25, green: 0.18, blue: 0.16, alpha: 0.15)
             shadowMaterial.lightingModel = .constant
             shadowGeometry.materials = [shadowMaterial]
             let shadow = SCNNode(geometry: shadowGeometry)
-            shadow.position = SCNVector3(0, -0.87, 0)
-            shadow.scale = SCNVector3(1.0, 1.0, 0.8)
+            shadow.position = SCNVector3(0, -1.04, 0)
+            shadow.scale = SCNVector3(1.0, 1.0, 0.72)
             scene.rootNode.addChildNode(shadow)
 
             // 阴影呼吸：与待机浮动同为 1.5s 半周期，角色升高时阴影缩小变淡
@@ -111,25 +145,28 @@ struct SceneKitView: NSViewRepresentable {
             shadowGrow.timingMode = .easeInEaseOut
             shadow.runAction(.repeatForever(.sequence([shadowShrink, shadowGrow])))
 
-            // 创建相机：平视正面，对齐参考图的正面全身站姿视角
+            // 正交相机消除近大远小，让角色更像参考图里的正面软萌公仔。
+            // orthographicScale 表示半高；1.18 让角色占满 150pt 精灵区，同时覆盖跳跃余量。
             cameraNode = SCNNode()
             cameraNode.camera = SCNCamera()
-            cameraNode.camera?.fieldOfView = 40  // 收窄视角减轻透视畸变，更接近贴纸的正投影观感
-            cameraNode.position = SCNVector3(x: 0, y: 0.15, z: 3.3)  // 留出头顶余量，跳跃/浮动不出画
-            cameraNode.look(at: SCNVector3(0, 0, 0))
+            cameraNode.camera?.usesOrthographicProjection = true
+            cameraNode.camera?.orthographicScale = 1.18
+            cameraNode.position = SCNVector3(x: 0, y: 0.02, z: 3.5)
+            cameraNode.look(at: SCNVector3(0, -0.02, 0))
             scene.rootNode.addChildNode(cameraNode)
 
             // 基于图像的环境光照（IBL）：程序化暖色渐变作环境贴图，
             // 让 PBR 材质表面产生柔和的环境反射与自然明暗过渡——
             // 这是软胶质感的关键，纯 diffuse 靠打光做不出这种通透感
             scene.lightingEnvironment.contents = Coordinator.makeEnvironmentImage()
-            scene.lightingEnvironment.intensity = 1.15
+            scene.lightingEnvironment.intensity = 0.70
 
             // 环境光：压低（IBL 已提供大部分环境照明），仅补一点暖色底光
             let ambientLight = SCNNode()
             ambientLight.light = SCNLight()
             ambientLight.light?.type = .ambient
-            ambientLight.light?.color = NSColor(red: 0.42, green: 0.40, blue: 0.38, alpha: 1.0)
+            ambientLight.light?.color = NSColor(red: 1.0, green: 0.96, blue: 0.92, alpha: 1.0)
+            ambientLight.light?.intensity = 650
             scene.rootNode.addChildNode(ambientLight)
 
             // 主光源：柔和面光（area light）替代硬平行光，高光更柔、边缘过渡更自然
@@ -137,7 +174,7 @@ struct SceneKitView: NSViewRepresentable {
             mainLight.light = SCNLight()
             mainLight.light?.type = .directional
             mainLight.light?.color = NSColor(red: 1.0, green: 0.97, blue: 0.92, alpha: 1.0)
-            mainLight.light?.intensity = 850
+            mainLight.light?.intensity = 450
             mainLight.position = SCNVector3(x: 2.2, y: 3.2, z: 2.5)
             mainLight.look(at: SCNVector3(0, -0.1, 0))
             scene.rootNode.addChildNode(mainLight)
@@ -147,7 +184,7 @@ struct SceneKitView: NSViewRepresentable {
             fillLight.light = SCNLight()
             fillLight.light?.type = .directional
             fillLight.light?.color = NSColor(red: 0.98, green: 0.85, blue: 0.83, alpha: 1.0)
-            fillLight.light?.intensity = 350
+            fillLight.light?.intensity = 220
             fillLight.position = SCNVector3(x: -2.2, y: 0.8, z: 2.0)
             fillLight.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(fillLight)
@@ -157,7 +194,7 @@ struct SceneKitView: NSViewRepresentable {
             rimLight.light = SCNLight()
             rimLight.light?.type = .directional
             rimLight.light?.color = NSColor(red: 0.80, green: 0.86, blue: 0.98, alpha: 1.0)
-            rimLight.light?.intensity = 400
+            rimLight.light?.intensity = 80
             rimLight.position = SCNVector3(x: -1.0, y: 2.0, z: -2.5)
             rimLight.look(at: SCNVector3(0, 0, 0))
             scene.rootNode.addChildNode(rimLight)
@@ -188,33 +225,86 @@ struct SceneKitView: NSViewRepresentable {
             armRNode = characterNode.childNode(withName: "bubu-arm-r", recursively: true)
             footLNode = characterNode.childNode(withName: "bubu-foot-l", recursively: true)
             footRNode = characterNode.childNode(withName: "bubu-foot-r", recursively: true)
+            illustratedSpriteNode = characterNode.childNode(withName: "bubu-sprite", recursively: true)
+            illustratedMorpher = illustratedSpriteNode?.morpher
+            illustratedBaseImage = illustratedSpriteNode?.geometry?.firstMaterial?.diffuse.contents as? NSImage
+            if let size = illustratedBaseImage?.size, size.height > 0 {
+                illustratedBaseAspect = size.width / size.height
+            } else {
+                illustratedBaseAspect = 1
+            }
+            illustratedSleepImage = currentCharacterID == SpriteCharacter.bubu.id
+                ? NSImage(named: "bubu_sleep")
+                : nil
+            illustratedWaveFrames = currentCharacterID == SpriteCharacter.bubu.id
+                ? (1...4).compactMap { NSImage(named: "bubu_wave_\(String(format: "%02d", $0))") }
+                : []
+        }
+
+        func updateFacingDirection(_ direction: CGFloat) {
+            let normalized: CGFloat = direction < 0 ? -1 : 1
+            guard normalized != facingDirection else { return }
+            facingDirection = normalized
+            applyFacingDirection(animated: true)
+        }
+
+        private func applyFacingDirection(animated: Bool) {
+            let facingNode = modelNode ?? characterNode
+            facingNode.removeAction(forKey: "edge-turn")
+            // 原始立绘的视觉朝向与屏幕 X 正方向相反，渲染时需要反向映射。
+            let targetY = facingDirection > 0 ? CGFloat.pi : 0
+            if animated {
+                let turn = SCNAction.rotateTo(
+                    x: 0,
+                    y: targetY,
+                    z: 0,
+                    duration: 0.28,
+                    usesShortestUnitArc: true
+                )
+                turn.timingMode = .easeInEaseOut
+                facingNode.runAction(turn, forKey: "edge-turn")
+            } else {
+                facingNode.eulerAngles.y = targetY
+            }
         }
 
         // MARK: - 部位点击互动
 
-        /// 可交互的身体部位
-        private enum BodyPart {
-            case head, ear, eyes, belly, arm, foot
-        }
-
         /// 场景单击：命中角色部位则触发对应互动，否则回落到原有单击行为
         @objc func handleSceneClick(_ recognizer: NSClickGestureRecognizer) {
-            // 双击的第二下交给上层的双击翻译流程，不重复触发互动
-            if let event = NSApp.currentEvent, event.clickCount > 1 { return }
             guard let scnView = recognizer.view as? SCNView else { return }
 
             let point = recognizer.location(in: scnView)
             let hits = scnView.hitTest(point, options: nil)  // 默认按距离由近到远排序
 
-            if let part = hits.lazy.compactMap({ Self.interactivePart(for: $0.node) }).first {
+            if let illustratedHit = hits.first(where: { Self.isIllustratedSpriteNode($0.node) }),
+               let part = SpriteBodyPart.hitTest(
+                   normalized: illustratedHit.textureCoordinates(withMappingChannel: 0),
+                   character: viewModel?.currentCharacter ?? .bubu
+               ) {
+                react(to: part)
+            } else if let part = hits.lazy.compactMap({ Self.interactivePart(for: $0.node) }).first {
                 react(to: part)
             } else {
                 onBackgroundTap?()
             }
         }
 
+        @objc func handleSceneDoubleClick(_ recognizer: NSClickGestureRecognizer) {
+            onDoubleTap?()
+        }
+
+        private static func isIllustratedSpriteNode(_ node: SCNNode) -> Bool {
+            var current: SCNNode? = node
+            while let n = current {
+                if n.name == "bubu-sprite" { return true }
+                current = n.parent
+            }
+            return false
+        }
+
         /// 沿命中节点向上找已命名的部位节点（几何体挂在无名子节点上，名字在轴心节点上）
-        private static func interactivePart(for node: SCNNode) -> BodyPart? {
+        private static func interactivePart(for node: SCNNode) -> SpriteBodyPart? {
             var current: SCNNode? = node
             while let n = current {
                 switch n.name {
@@ -231,52 +321,48 @@ struct SceneKitView: NSViewRepresentable {
         }
 
         /// 触发部位互动：对应的小动作 + 一句短气泡（睡着时先被戳醒）
-        private func react(to part: BodyPart) {
-            guard let viewModel else { return }
-
-            if viewModel.animationState == .sleeping {
-                viewModel.wakeUp()
-                viewModel.showBubble(message: "呼哇…被戳醒了", type: .greeting, duration: 2.5)
-                return
-            }
-            viewModel.resetSleepTimer()
-
+        private func react(to part: SpriteBodyPart) {
             switch part {
             case .head:
                 gestureHeadTilt()
-                say(["嘿嘿，摸头头~", "干嘛戳我脑袋呀"])
             case .ear:
                 wiggleEarsOnce()
-                say(["耳朵痒痒的~", "别揪耳朵啦"])
             case .eyes:
                 blinkNow()
-                say(["眨眨眼~", "看到你啦"])
+            case .cheek:
+                bellyJiggle()
             case .belly:
                 bellyJiggle()
-                say(["咕噜咕噜~", "肚子不许戳！"])
             case .arm:
                 gestureWave()
-                say(["握手握手~", "嗨呀~"])
             case .foot:
                 gestureKickFeet()
-                say(["脚脚不给摸！", "踢踢踢~"])
+            case .phone:
+                gestureHeadTilt()
             }
-        }
-
-        /// 说一句互动短语；已有气泡在显示时保持沉默，不打断翻译结果等内容
-        private func say(_ lines: [String]) {
-            guard let viewModel, !viewModel.showBubble,
-                  let line = lines.randomElement() else { return }
-            viewModel.showBubble(message: line, type: .greeting, duration: 2.5)
+            onBodyPartTap?(part)
         }
 
         /// 点眼睛：立即眨一次眼
         private func blinkNow() {
+            if let sprite = illustratedSpriteNode,
+               let blink = illustratedMorphTransition(.blink, from: 0, to: 1, duration: 0.07),
+               let open = illustratedMorphTransition(.blink, from: 1, to: 0, duration: 0.10) {
+                sprite.runAction(.sequence([blink, open]), forKey: "blink-now")
+                return
+            }
             eyesNode?.runAction(Coordinator.makeBlinkOnce(), forKey: "blink-now")
         }
 
         /// 点耳朵：双耳同时抖动一轮
         private func wiggleEarsOnce() {
+            if earLNode == nil, earRNode == nil, let sprite = illustratedSpriteNode {
+                let left = SCNAction.rotateBy(x: 0, y: 0, z: 0.055, duration: 0.10)
+                let right = SCNAction.rotateBy(x: 0, y: 0, z: -0.11, duration: 0.18)
+                let center = SCNAction.rotateBy(x: 0, y: 0, z: 0.055, duration: 0.10)
+                sprite.runAction(.sequence([left, right, center, left, right, center]), forKey: "wiggle-once")
+                return
+            }
             for (ear, side) in [(earLNode, CGFloat(1)), (earRNode, CGFloat(-1))] {
                 guard let ear else { continue }
 
@@ -317,6 +403,7 @@ struct SceneKitView: NSViewRepresentable {
             scene.rootNode.addChildNode(characterNode)
 
             bindMicroNodes()
+            applyFacingDirection(animated: false)
             applyAnimation(currentAnimation)
             startMicroAnimations()
         }
@@ -364,6 +451,18 @@ struct SceneKitView: NSViewRepresentable {
 
         /// 眨眼：随机间隔 2.5~6 秒，偶尔连眨两次更传神
         private func startBlinking() {
+            if let sprite = illustratedSpriteNode, illustratedMorpher != nil,
+               let blink = illustratedMorphTransition(.blink, from: 0, to: 1, duration: 0.07),
+               let open = illustratedMorphTransition(.blink, from: 1, to: 0, duration: 0.10) {
+                let loop = SCNAction.repeatForever(.sequence([
+                    .wait(duration: 4.0, withRange: 3.5),
+                    blink,
+                    open
+                ]))
+                sprite.runAction(loop, forKey: "illustrated-blink")
+                return
+            }
+
             guard let eyes = eyesNode else { return }
 
             let blinkOnce = Coordinator.makeBlinkOnce()
@@ -379,6 +478,55 @@ struct SceneKitView: NSViewRepresentable {
                 }
             ]))
             eyes.runAction(loop, forKey: "blink")
+        }
+
+        /// Morph 权重使用平滑插值，动作结束时精确落到目标值，避免长时间运行后的姿态漂移。
+        private func illustratedMorphTransition(
+            _ target: IllustratedMorphTarget,
+            from: CGFloat,
+            to: CGFloat,
+            duration: TimeInterval
+        ) -> SCNAction? {
+            guard let morpher = illustratedMorpher else { return nil }
+            return SCNAction.customAction(duration: duration) { [weak morpher] _, elapsed in
+                let raw = min(max(elapsed / CGFloat(duration), 0), 1)
+                let eased = raw * raw * (3 - 2 * raw)
+                morpher?.setWeight(from + (to - from) * eased, forTargetAt: target.rawValue)
+            }
+        }
+
+        private func illustratedMorphCrossfade(
+            from source: IllustratedMorphTarget,
+            to destination: IllustratedMorphTarget,
+            duration: TimeInterval
+        ) -> SCNAction? {
+            guard let morpher = illustratedMorpher else { return nil }
+            return SCNAction.customAction(duration: duration) { [weak morpher] _, elapsed in
+                let raw = min(max(elapsed / CGFloat(duration), 0), 1)
+                let eased = raw * raw * (3 - 2 * raw)
+                morpher?.setWeight(1 - eased, forTargetAt: source.rawValue)
+                morpher?.setWeight(eased, forTargetAt: destination.rawValue)
+            }
+        }
+
+        private func resetIllustratedStateMorphs() {
+            illustratedSpriteNode?.removeAction(forKey: "illustrated-state")
+            illustratedSpriteNode?.removeAction(forKey: "illustrated-wave")
+            illustratedSpriteNode?.removeAction(forKey: "illustrated-kick")
+            if let base = illustratedBaseImage {
+                illustratedSpriteNode?.geometry?.firstMaterial?.diffuse.contents = base
+            }
+            illustratedSpriteNode?.scale = SCNVector3(1, 1, 1)
+            illustratedSpriteNode?.position = SCNVector3(0, -0.03, 0)
+            for target in [
+                IllustratedMorphTarget.waveRaised,
+                .waveSide,
+                .leftStep,
+                .rightStep,
+                .talk
+            ] {
+                illustratedMorpher?.setWeight(0, forTargetAt: target.rawValue)
+            }
         }
 
         /// 耳朵抖动：间歇性轻轻抽动一下双耳，像有点小情绪，两耳向外倾再回正
@@ -426,8 +574,28 @@ struct SceneKitView: NSViewRepresentable {
             }
         }
 
-        /// 挥手打招呼：右臂举起晃两下再放下
+        /// 挥手打招呼：单侧手臂举起晃动后放下
         private func gestureWave() {
+            if let sprite = illustratedSpriteNode,
+               let textureWave = illustratedTextureWaveAction() {
+                sprite.runAction(textureWave, forKey: "illustrated-wave")
+                return
+            }
+
+            if let sprite = illustratedSpriteNode,
+               let raise = illustratedMorphTransition(.waveRaised, from: 0, to: 1, duration: 0.32),
+               let waveOut = illustratedMorphCrossfade(from: .waveRaised, to: .waveSide, duration: 0.16),
+               let waveIn = illustratedMorphCrossfade(from: .waveSide, to: .waveRaised, duration: 0.16),
+               let lower = illustratedMorphTransition(.waveRaised, from: 1, to: 0, duration: 0.34) {
+                sprite.runAction(.sequence([
+                    raise,
+                    waveOut, waveIn, waveOut, waveIn,
+                    .wait(duration: 0.10),
+                    lower
+                ]), forKey: "illustrated-wave")
+                return
+            }
+
             guard let arm = armRNode else { return }
 
             let raise = SCNAction.rotateBy(x: 0, y: 0, z: 1.7, duration: 0.3)
@@ -447,8 +615,54 @@ struct SceneKitView: NSViewRepresentable {
             ]), forKey: "wave")
         }
 
+        /// 布布使用完整纹理帧挥手：身体、手机和头颈肩不参与网格形变。
+        private func illustratedTextureWaveAction() -> SCNAction? {
+            guard let base = illustratedBaseImage,
+                  illustratedWaveFrames.count == 4 else { return nil }
+
+            func show(_ image: NSImage, for duration: TimeInterval) -> SCNAction {
+                .sequence([
+                    .run { node in node.geometry?.firstMaterial?.diffuse.contents = image },
+                    .wait(duration: duration)
+                ])
+            }
+
+            let raised = illustratedWaveFrames[1]
+            let waveLeft = illustratedWaveFrames[2]
+            let waveRight = illustratedWaveFrames[3]
+            let wavePairs = (0..<6).flatMap { _ in [
+                show(waveLeft, for: 0.14),
+                show(waveRight, for: 0.14)
+            ] }
+
+            return .sequence([
+                show(illustratedWaveFrames[0], for: 0.16),
+                show(raised, for: 0.20),
+                .sequence(wavePairs),
+                show(raised, for: 0.20),
+                show(illustratedWaveFrames[0], for: 0.16),
+                .run { node in node.geometry?.firstMaterial?.diffuse.contents = base }
+            ])
+        }
+
         /// 开心踢腿：双脚交替向前踢两轮，像坐着晃腿
         private func gestureKickFeet() {
+            if let sprite = illustratedSpriteNode,
+               let leftUp = illustratedMorphTransition(.leftStep, from: 0, to: 1, duration: 0.15),
+               let leftDown = illustratedMorphTransition(.leftStep, from: 1, to: 0, duration: 0.18),
+               let rightUp = illustratedMorphTransition(.rightStep, from: 0, to: 1, duration: 0.15),
+               let rightDown = illustratedMorphTransition(.rightStep, from: 1, to: 0, duration: 0.18) {
+                sprite.runAction(.sequence([
+                    leftUp, leftDown,
+                    .wait(duration: 0.08),
+                    rightUp, rightDown,
+                    .wait(duration: 0.08),
+                    leftUp, leftDown,
+                    rightUp, rightDown
+                ]), forKey: "illustrated-kick")
+                return
+            }
+
             guard let footL = footLNode, let footR = footRNode else { return }
 
             func kick(_ foot: SCNNode, delay: TimeInterval) {
@@ -471,7 +685,7 @@ struct SceneKitView: NSViewRepresentable {
 
         /// 歪头：侧倾片刻再回正，好奇的样子
         private func gestureHeadTilt() {
-            guard let head = headNode else { return }
+            guard let head = headNode ?? illustratedSpriteNode else { return }
             let direction: CGFloat = Bool.random() ? 1 : -1
 
             let tilt = SCNAction.rotateBy(x: 0, y: 0, z: 0.20 * direction, duration: 0.28)
@@ -573,7 +787,19 @@ struct SceneKitView: NSViewRepresentable {
                 }
             }
 
-            // 预设角色使用代码构建的软胶熊猫/小熊 3D 模型（有 usdz/scn 文件时优先加载文件）
+            // 桌面精灵只有 150pt 左右：优先把高质量角色立绘作为 2.5D 平面放进 SceneKit，
+            // 保留整体浮动/跳跃/缩放动画，同时避免基础球体在小尺寸下产生零件拼装感。
+            let illustratedImage: NSImage? = {
+                if character.isCustom, let path = character.customImagePath {
+                    return NSImage(contentsOfFile: path)
+                }
+                return NSImage(named: character.imageName)
+            }()
+            if let illustratedImage {
+                return createIllustratedCharacterNode(image: illustratedImage, character: character)
+            }
+
+            // 资源异常时才使用代码构建的软胶熊猫/小熊占位模型。
             switch character.imageName {
             case "bubu":
                 return createBuddyNode(style: .brownBear)   // 棕小熊（布布）
@@ -585,18 +811,343 @@ struct SceneKitView: NSViewRepresentable {
             }
         }
 
+        /// 不同立绘的五官和四肢位置不同，Morph 区域按角色单独标定。
+        private struct IllustratedRigProfile {
+            let waveCenter: CGPoint
+            let waveRadius: CGVector
+            let wavePivot: CGPoint
+            let waveAngle: CGFloat
+            let waveLift: CGVector
+            let leftFootCenter: CGPoint
+            let rightFootCenter: CGPoint
+            let footRadius: CGVector
+            let leftFootOffset: CGVector
+            let rightFootOffset: CGVector
+            let eyeCenters: [CGPoint]
+            let eyeRadius: CGVector
+            let mouthCenter: CGPoint
+            let mouthRadius: CGVector
+
+            static func make(for character: SpriteCharacter) -> IllustratedRigProfile {
+                switch character.imageName {
+                case "yier":
+                    return IllustratedRigProfile(
+                        waveCenter: CGPoint(x: 0.86, y: 0.42),
+                        waveRadius: CGVector(dx: 0.13, dy: 0.15),
+                        wavePivot: CGPoint(x: 0.73, y: 0.36),
+                        waveAngle: 0.32,
+                        waveLift: .zero,
+                        leftFootCenter: CGPoint(x: 0.34, y: 0.075),
+                        rightFootCenter: CGPoint(x: 0.66, y: 0.075),
+                        footRadius: CGVector(dx: 0.17, dy: 0.14),
+                        leftFootOffset: CGVector(dx: -0.018, dy: 0.075),
+                        rightFootOffset: CGVector(dx: 0.018, dy: 0.075),
+                        eyeCenters: [CGPoint(x: 0.29, y: 0.55), CGPoint(x: 0.66, y: 0.55)],
+                        eyeRadius: CGVector(dx: 0.075, dy: 0.065),
+                        mouthCenter: CGPoint(x: 0.50, y: 0.49),
+                        mouthRadius: CGVector(dx: 0.08, dy: 0.075)
+                    )
+                case "bubu", "yier_phone":
+                    return IllustratedRigProfile(
+                        waveCenter: CGPoint(x: 0.68, y: 0.31),
+                        waveRadius: CGVector(dx: 0.17, dy: 0.17),
+                        wavePivot: CGPoint(x: 0.78, y: 0.39),
+                        waveAngle: -0.88,
+                        waveLift: .zero,
+                        leftFootCenter: CGPoint(x: 0.29, y: 0.055),
+                        rightFootCenter: CGPoint(x: 0.69, y: 0.055),
+                        footRadius: CGVector(dx: 0.17, dy: 0.13),
+                        leftFootOffset: CGVector(dx: -0.015, dy: 0.072),
+                        rightFootOffset: CGVector(dx: 0.015, dy: 0.072),
+                        eyeCenters: [CGPoint(x: 0.27, y: 0.55), CGPoint(x: 0.58, y: 0.55)],
+                        eyeRadius: CGVector(dx: 0.085, dy: 0.065),
+                        mouthCenter: CGPoint(x: 0.42, y: 0.49),
+                        mouthRadius: CGVector(dx: 0.075, dy: 0.07)
+                    )
+                default:
+                    return IllustratedRigProfile(
+                        waveCenter: CGPoint(x: 0.78, y: 0.38),
+                        waveRadius: CGVector(dx: 0.22, dy: 0.25),
+                        wavePivot: CGPoint(x: 0.67, y: 0.38),
+                        waveAngle: 0.45,
+                        waveLift: CGVector(dx: 0.01, dy: 0.035),
+                        leftFootCenter: CGPoint(x: 0.34, y: 0.08),
+                        rightFootCenter: CGPoint(x: 0.66, y: 0.08),
+                        footRadius: CGVector(dx: 0.18, dy: 0.15),
+                        leftFootOffset: CGVector(dx: -0.015, dy: 0.065),
+                        rightFootOffset: CGVector(dx: 0.015, dy: 0.065),
+                        eyeCenters: [CGPoint(x: 0.34, y: 0.57), CGPoint(x: 0.66, y: 0.57)],
+                        eyeRadius: CGVector(dx: 0.09, dy: 0.07),
+                        mouthCenter: CGPoint(x: 0.50, y: 0.49),
+                        mouthRadius: CGVector(dx: 0.09, dy: 0.08)
+                    )
+                }
+            }
+        }
+
+        /// 用透明立绘构建可变形 2.5D 网格。基础顶点不改变，所以 idle 正面与原 PNG 一致。
+        private static func createIllustratedCharacterNode(
+            image: NSImage,
+            character: SpriteCharacter
+        ) -> SCNNode {
+            let container = SCNNode()
+            let model = SCNNode()
+            model.name = "bubu-model"
+            container.addChildNode(model)
+
+            let aspect = max(image.size.width / max(image.size.height, 1), 0.1)
+            let height: CGFloat = 1.90
+            let width = height * aspect
+            let columns = 40
+            let rows = 52
+            var vertices: [SCNVector3] = []
+            var textureCoordinates: [CGPoint] = []
+            var rigCoordinates: [CGPoint] = []
+            var indices: [UInt32] = []
+            vertices.reserveCapacity((columns + 1) * (rows + 1))
+            textureCoordinates.reserveCapacity((columns + 1) * (rows + 1))
+            rigCoordinates.reserveCapacity((columns + 1) * (rows + 1))
+            indices.reserveCapacity(columns * rows * 6)
+
+            for row in 0...rows {
+                let v = CGFloat(row) / CGFloat(rows)
+                for column in 0...columns {
+                    let u = CGFloat(column) / CGFloat(columns)
+                    vertices.append(SCNVector3(
+                        (u - 0.5) * width,
+                        (v - 0.5) * height,
+                        0
+                    ))
+                    // SceneKit 对 NSImage 的纹理原点在左上；网格/骨骼坐标仍使用左下原点。
+                    textureCoordinates.append(CGPoint(x: u, y: 1 - v))
+                    rigCoordinates.append(CGPoint(x: u, y: v))
+                }
+            }
+
+            for row in 0..<rows {
+                for column in 0..<columns {
+                    let topLeft = UInt32(row * (columns + 1) + column)
+                    let topRight = topLeft + 1
+                    let bottomLeft = UInt32((row + 1) * (columns + 1) + column)
+                    let bottomRight = bottomLeft + 1
+                    indices.append(contentsOf: [topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight])
+                }
+            }
+
+            let vertexSource = SCNGeometrySource(vertices: vertices)
+            let textureSource = SCNGeometrySource(textureCoordinates: textureCoordinates)
+            let element = SCNGeometryElement(indices: indices, primitiveType: .triangles)
+            let geometry = SCNGeometry(sources: [vertexSource, textureSource], elements: [element])
+
+            let material = SCNMaterial()
+            material.lightingModel = .constant
+            material.diffuse.contents = image
+            material.diffuse.magnificationFilter = .linear
+            material.diffuse.minificationFilter = .linear
+            material.diffuse.mipFilter = .linear
+            material.diffuse.wrapS = .clamp
+            material.diffuse.wrapT = .clamp
+            material.blendMode = .alpha
+            material.transparencyMode = .dualLayer
+            material.writesToDepthBuffer = false
+            material.isDoubleSided = true
+            geometry.materials = [material]
+
+            let profile = IllustratedRigProfile.make(for: character)
+            let waveRaisedVertices = makeWaveVertices(
+                base: vertices,
+                textureCoordinates: rigCoordinates,
+                width: width,
+                height: height,
+                profile: profile,
+                angle: profile.waveAngle
+            )
+            let sideDelta: CGFloat = profile.waveAngle < 0 ? -0.18 : 0.18
+            let waveSideVertices = makeWaveVertices(
+                base: vertices,
+                textureCoordinates: rigCoordinates,
+                width: width,
+                height: height,
+                profile: profile,
+                angle: profile.waveAngle + sideDelta
+            )
+            let leftStepVertices = makeTranslatedVertices(
+                base: vertices,
+                textureCoordinates: rigCoordinates,
+                width: width,
+                height: height,
+                center: profile.leftFootCenter,
+                radius: profile.footRadius,
+                offset: profile.leftFootOffset
+            )
+            let rightStepVertices = makeTranslatedVertices(
+                base: vertices,
+                textureCoordinates: rigCoordinates,
+                width: width,
+                height: height,
+                center: profile.rightFootCenter,
+                radius: profile.footRadius,
+                offset: profile.rightFootOffset
+            )
+            let blinkVertices = makeBlinkVertices(
+                base: vertices,
+                textureCoordinates: rigCoordinates,
+                height: height,
+                profile: profile
+            )
+            let talkVertices = makeTalkVertices(
+                base: vertices,
+                textureCoordinates: rigCoordinates,
+                height: height,
+                profile: profile
+            )
+
+            func morphGeometry(name: String, vertices: [SCNVector3]) -> SCNGeometry {
+                let target = SCNGeometry(
+                    sources: [SCNGeometrySource(vertices: vertices)],
+                    elements: [element]
+                )
+                target.name = name
+                return target
+            }
+
+            let morpher = SCNMorpher()
+            morpher.calculationMode = .normalized
+            morpher.targets = [
+                morphGeometry(name: "wave-raised", vertices: waveRaisedVertices),
+                morphGeometry(name: "wave-side", vertices: waveSideVertices),
+                morphGeometry(name: "left-step", vertices: leftStepVertices),
+                morphGeometry(name: "right-step", vertices: rightStepVertices),
+                morphGeometry(name: "blink", vertices: blinkVertices),
+                morphGeometry(name: "talk", vertices: talkVertices)
+            ]
+
+            let sprite = SCNNode(geometry: geometry)
+            sprite.name = "bubu-sprite"
+            sprite.morpher = morpher
+            sprite.position = SCNVector3(0, -0.03, 0)
+            model.addChildNode(sprite)
+            return container
+        }
+
+        private static func smoothEllipseWeight(
+            point: CGPoint,
+            center: CGPoint,
+            radius: CGVector
+        ) -> CGFloat {
+            let dx = (point.x - center.x) / max(radius.dx, 0.001)
+            let dy = (point.y - center.y) / max(radius.dy, 0.001)
+            let distance = sqrt(dx * dx + dy * dy)
+            let linear = max(0, min(1, 1 - distance))
+            return linear * linear * (3 - 2 * linear)
+        }
+
+        private static func makeTranslatedVertices(
+            base: [SCNVector3],
+            textureCoordinates: [CGPoint],
+            width: CGFloat,
+            height: CGFloat,
+            center: CGPoint,
+            radius: CGVector,
+            offset: CGVector
+        ) -> [SCNVector3] {
+            var result: [SCNVector3] = []
+            result.reserveCapacity(base.count)
+            for index in base.indices {
+                let vertex = base[index]
+                let uv = textureCoordinates[index]
+                let weight = smoothEllipseWeight(point: uv, center: center, radius: radius)
+                result.append(SCNVector3(
+                    vertex.x + offset.dx * width * weight,
+                    vertex.y + offset.dy * height * weight,
+                    vertex.z
+                ))
+            }
+            return result
+        }
+
+        private static func makeWaveVertices(
+            base: [SCNVector3],
+            textureCoordinates: [CGPoint],
+            width: CGFloat,
+            height: CGFloat,
+            profile: IllustratedRigProfile,
+            angle: CGFloat
+        ) -> [SCNVector3] {
+            let cosine = cos(angle)
+            let sine = sin(angle)
+
+            return zip(base, textureCoordinates).map { vertex, uv in
+                let weight = smoothEllipseWeight(
+                    point: uv,
+                    center: profile.waveCenter,
+                    radius: profile.waveRadius
+                )
+                let localX = uv.x - profile.wavePivot.x
+                let localY = uv.y - profile.wavePivot.y
+                // 肩关节附近权重强制归零：颈部和肩膀保持不动，只有肩关节以下抬起。
+                let shoulderDistance = sqrt(localX * localX + localY * localY)
+                let distal = min(max((shoulderDistance - 0.025) / 0.14, 0), 1)
+                let anchoredWeight = weight * distal * distal * (3 - 2 * distal)
+                let rotatedX = cosine * localX - sine * localY
+                let rotatedY = sine * localX + cosine * localY
+                let deltaU = (rotatedX - localX + profile.waveLift.dx) * anchoredWeight
+                let deltaV = (rotatedY - localY + profile.waveLift.dy) * anchoredWeight
+
+                return SCNVector3(
+                    vertex.x + deltaU * width,
+                    vertex.y + deltaV * height,
+                    vertex.z
+                )
+            }
+        }
+
+        private static func makeBlinkVertices(
+            base: [SCNVector3],
+            textureCoordinates: [CGPoint],
+            height: CGFloat,
+            profile: IllustratedRigProfile
+        ) -> [SCNVector3] {
+            zip(base, textureCoordinates).map { vertex, uv in
+                var deltaV: CGFloat = 0
+                for center in profile.eyeCenters {
+                    let weight = smoothEllipseWeight(point: uv, center: center, radius: profile.eyeRadius)
+                    deltaV += (center.y - uv.y) * 0.82 * weight
+                }
+                return SCNVector3(vertex.x, vertex.y + deltaV * height, vertex.z)
+            }
+        }
+
+        private static func makeTalkVertices(
+            base: [SCNVector3],
+            textureCoordinates: [CGPoint],
+            height: CGFloat,
+            profile: IllustratedRigProfile
+        ) -> [SCNVector3] {
+            zip(base, textureCoordinates).map { vertex, uv in
+                let weight = smoothEllipseWeight(
+                    point: uv,
+                    center: profile.mouthCenter,
+                    radius: profile.mouthRadius
+                )
+                let deltaV = (uv.y - profile.mouthCenter.y) * 0.28 * weight
+                return SCNVector3(vertex.x, vertex.y + deltaV * height, vertex.z)
+            }
+        }
+
         // MARK: - 软胶熊猫/小熊 3D 模型（布布/一二共用一套建模，配色与特征参数化）
 
         /// 角色外观参数（对照参考图采样）。
-        /// 布布 = 棕小熊（深棕描边耳 + 橘黄腮红）；
-        /// 一二/伊尔 = 白熊猫（深棕实心圆耳 + 粉腮红 + 倔强怒眉 + 深棕领巾 + 深棕脚垫）
+        /// 布布 = 棕小熊（深棕描边耳 + 橘黄腮红 + 深棕脚尖）；
+        /// 一二/伊尔 = 白熊猫（深棕实心圆耳 + 粉腮红 + 深棕领巾 + 深棕脚垫）
         struct BuddyStyle {
             let body: NSColor       // 身体/头
             let ear: NSColor        // 耳朵主色
             let earRim: NSColor?    // 耳朵描边环（棕熊有，白熊猫是实心深耳）
             let blush: NSColor      // 腮红
             let accent: NSColor     // 眼/眉/嘴/领巾/脚垫
-            let hasBrows: Bool      // 倔强怒眉（白熊猫特征）
+            let tongue: NSColor     // 张嘴笑时的舌头
+            let hasBrows: Bool      // 可选眉毛；默认角色关闭，避免小尺寸下显得凶
             let hasScarf: Bool      // 深棕领巾 + 胸前三瓣结（白熊猫特征）
             let hasToeCaps: Bool    // 深棕脚垫（白熊猫特征）
 
@@ -607,9 +1158,10 @@ struct SceneKitView: NSViewRepresentable {
                 earRim: NSColor(red: 0.33, green: 0.21, blue: 0.15, alpha: 1.0),   // 深棕描边环
                 blush: NSColor(red: 1.0, green: 0.72, blue: 0.33, alpha: 1.0),     // 橘黄腮红
                 accent: NSColor(red: 0.21, green: 0.14, blue: 0.12, alpha: 1.0),   // 深棕五官
+                tongue: NSColor(red: 1.0, green: 0.43, blue: 0.50, alpha: 1.0),
                 hasBrows: false,
                 hasScarf: false,
-                hasToeCaps: false
+                hasToeCaps: true
             )
 
             /// 白熊猫（一二/伊尔）
@@ -619,7 +1171,8 @@ struct SceneKitView: NSViewRepresentable {
                 earRim: nil,
                 blush: NSColor(red: 0.99, green: 0.66, blue: 0.72, alpha: 1.0),    // 粉腮红
                 accent: NSColor(red: 0.21, green: 0.14, blue: 0.12, alpha: 1.0),   // 深棕五官
-                hasBrows: true,
+                tongue: NSColor(red: 1.0, green: 0.43, blue: 0.50, alpha: 1.0),
+                hasBrows: false,
                 hasScarf: true,
                 hasToeCaps: true
             )
@@ -633,10 +1186,18 @@ struct SceneKitView: NSViewRepresentable {
             material.lightingModel = .physicallyBased
             material.diffuse.contents = color
             material.metalness.contents = 0.0
-            material.roughness.contents = 0.65          // 光滑软胶哑光
-            material.clearCoat.contents = 0.18          // 淡涂层高光，软胶质感
-            material.clearCoatRoughness.contents = 0.55  // 涂层高粗糙 = 高光更宽更柔（参考图的大面积柔光）
+            material.roughness.contents = 0.90          // 高粗糙度压掉塑料反光，接近软陶/绒面公仔
+            material.clearCoat.contents = 0.02          // 只保留极淡的轮廓高光
+            material.clearCoatRoughness.contents = 0.90
             material.diffuse.mipFilter = .linear
+            return material
+        }
+
+        /// 五官和腮红使用不受灯光影响的平涂材质，避免小尺寸下出现脏黑反光。
+        private static func featureMaterial(_ color: NSColor) -> SCNMaterial {
+            let material = SCNMaterial()
+            material.lightingModel = .constant
+            material.diffuse.contents = color
             return material
         }
 
@@ -662,36 +1223,28 @@ struct SceneKitView: NSViewRepresentable {
 
             // 身体 - 梨形壮躯干：单个 Y 拉长椭球（完整立体，不压扁），
             // 顶部埋进头底消除"脖子缝"，底部盖住腿根
-            let torso = sphereNode(radius: 0.30, color: style.body, segments: 72)
-            torso.position = SCNVector3(0, -0.45, 0)
-            torso.scale = SCNVector3(1.55, 1.13, 1.12)
+            let torso = sphereNode(radius: 0.35, color: style.body, segments: 72)
+            torso.position = SCNVector3(0, -0.52, 0)
+            torso.scale = SCNVector3(1.50, 1.42, 0.92)
             model.addChildNode(torso)
 
             // 头部组（歪头/张望动画的旋转轴心）。头占全身一大半的 baby 比例
             let head = SCNNode()
             head.name = "bubu-head"
-            head.position = SCNVector3(0, 0.30, 0.0)
+            head.position = SCNVector3(0, 0.34, 0.0)
             model.addChildNode(head)
 
             // 头 - 宽阔面包型：横向宽、纵向略高、Z 只微收（参考图是饱满立体不是浮雕）
             let face = sphereNode(radius: 0.55, color: style.body, segments: 80)
-            face.scale = SCNVector3(1.22, 1.02, 0.92)
+            face.scale = SCNVector3(1.20, 1.08, 0.78)
             head.addChildNode(face)
-
-            // 脸颊鼓包 - 两侧下方叠同色球，撑出下半张脸的方圆感（婴儿肥）
-            for side in [CGFloat(-1), CGFloat(1)] {
-                let cheek = sphereNode(radius: 0.30, color: style.body, segments: 48)
-                cheek.position = SCNVector3(side * 0.27, -0.16, 0.04)
-                cheek.scale = SCNVector3(1.0, 0.92, 0.86)
-                head.addChildNode(cheek)
-            }
 
             // 耳朵 - 头顶两角的圆耳：布布=实心深棕；一二=深棕描边环+焦糖内耳。
             // 各挂在可动耳根节点下（承接耳朵抖动微动作）
             for side in [CGFloat(-1), CGFloat(1)] {
                 let earPivot = SCNNode()
                 earPivot.name = side < 0 ? "bubu-ear-l" : "bubu-ear-r"
-                earPivot.position = SCNVector3(side * 0.38, 0.47, 0.0)
+                earPivot.position = SCNVector3(side * 0.54, 0.50, 0.0)
                 head.addChildNode(earPivot)
 
                 if let rimColor = style.earRim {
@@ -716,15 +1269,14 @@ struct SceneKitView: NSViewRepresentable {
             // 参考图是小而实的黑豆眼：不贴白高光片，靠材质光泽自然出高光点
             let eyes = SCNNode()
             eyes.name = "bubu-eyes"
-            eyes.position = SCNVector3(0, -0.02, 0.46)
+            eyes.position = SCNVector3(0, -0.07, 0.44)
             head.addChildNode(eyes)
 
             for xOffset in [CGFloat(-0.21), CGFloat(0.21)] {
-                let eye = sphereNode(radius: 0.075, color: style.accent, segments: 40)
+                let eye = sphereNode(radius: 0.072, color: style.accent, segments: 40)
                 eye.position = SCNVector3(xOffset, 0, 0)
-                eye.scale = SCNVector3(1.0, 1.12, 0.55)
-                eye.geometry?.firstMaterial?.roughness.contents = 0.3
-                eye.geometry?.firstMaterial?.clearCoat.contents = 0.5
+                eye.scale = SCNVector3(1.0, 1.0, 0.26)
+                eye.geometry?.materials = [featureMaterial(style.accent)]
                 eyes.addChildNode(eye)
             }
 
@@ -733,7 +1285,7 @@ struct SceneKitView: NSViewRepresentable {
                 for side in [CGFloat(-1), CGFloat(1)] {
                     let brow = SCNNode(geometry: {
                         let g = SCNCapsule(capRadius: 0.018, height: 0.11)
-                        g.materials = [matteMaterial(style.accent)]
+                        g.materials = [featureMaterial(style.accent)]
                         return g
                     }())
                     brow.position = SCNVector3(side * 0.21, 0.09, 0.47)
@@ -742,41 +1294,38 @@ struct SceneKitView: NSViewRepresentable {
                 }
             }
 
-            // 嘴 - 柔和上扬的 "ω" 小嘴：中间小圆凸 + 两侧各一道向上外翘的短弧
+            // 嘴 - 深色椭圆包住粉色舌头。小尺寸下比闭口 ω 更容易读成开心，而不是严肃。
             let mouth = SCNNode()
-            mouth.position = SCNVector3(0, -0.15, 0.50)
-            let mouthMat = matteMaterial(style.accent)
-
-            // 中间小圆凸（ω 的中峰）
-            let bump = SCNNode(geometry: {
-                let g = SCNSphere(radius: 0.013)
-                g.materials = [mouthMat]
+            mouth.name = "bubu-mouth"
+            mouth.position = SCNVector3(0, -0.17, 0.46)
+            let opening = SCNNode(geometry: {
+                let g = SCNSphere(radius: 0.055)
+                g.segmentCount = 32
+                g.materials = [featureMaterial(style.accent)]
                 return g
             }())
-            bump.scale = SCNVector3(1.4, 1.0, 0.6)
-            mouth.addChildNode(bump)
+            opening.scale = SCNVector3(0.72, 1.0, 0.20)
+            mouth.addChildNode(opening)
 
-            // 两侧上翘短弧
-            for side in [CGFloat(-1), CGFloat(1)] {
-                let seg = SCNNode(geometry: {
-                    let g = SCNCapsule(capRadius: 0.009, height: 0.064)
-                    g.materials = [mouthMat]
-                    return g
-                }())
-                seg.position = SCNVector3(side * 0.034, 0.008, 0)
-                seg.eulerAngles = SCNVector3(0, 0, Float(side) * -1.25)
-                mouth.addChildNode(seg)
-            }
+            let tongue = SCNNode(geometry: {
+                let g = SCNSphere(radius: 0.036)
+                g.segmentCount = 28
+                g.materials = [featureMaterial(style.tongue)]
+                return g
+            }())
+            tongue.position = SCNVector3(0, -0.014, 0.014)
+            tongue.scale = SCNVector3(0.72, 0.58, 0.16)
+            mouth.addChildNode(tongue)
             head.addChildNode(mouth)
 
             // 腮红 - 脸颊外缘大圆斑（X 放大补偿脸面弧度的视觉收窄）
             for xOffset in [CGFloat(-0.40), CGFloat(0.40)] {
-                let blushGeo = SCNSphere(radius: 0.12)
+                let blushGeo = SCNSphere(radius: 0.15)
                 blushGeo.segmentCount = 32
-                blushGeo.materials = [matteMaterial(style.blush)]
+                blushGeo.materials = [featureMaterial(style.blush)]
                 let blush = SCNNode(geometry: blushGeo)
-                blush.position = SCNVector3(xOffset, -0.20, 0.40)
-                blush.scale = SCNVector3(1.2, 1.0, 0.30)
+                blush.position = SCNVector3(xOffset, -0.21, 0.42)
+                blush.scale = SCNVector3(1.12, 1.0, 0.18)
                 head.addChildNode(blush)
             }
 
@@ -810,14 +1359,14 @@ struct SceneKitView: NSViewRepresentable {
             for side in [CGFloat(-1), CGFloat(1)] {
                 let shoulder = SCNNode()
                 shoulder.name = side < 0 ? "bubu-arm-l" : "bubu-arm-r"
-                shoulder.position = SCNVector3(side * 0.405, -0.35, 0.02)
+                shoulder.position = SCNVector3(side * 0.43, -0.39, 0.18)
                 model.addChildNode(shoulder)
 
-                let armGeometry = SCNCapsule(capRadius: 0.095, height: 0.26)
+                let armGeometry = SCNCapsule(capRadius: 0.12, height: 0.38)
                 armGeometry.materials = [matteMaterial(style.body)]
                 let arm = SCNNode(geometry: armGeometry)
-                arm.position = SCNVector3(side * 0.015, -0.10, 0.04)
-                arm.eulerAngles = SCNVector3(-0.10, 0, Float(side) * -0.14)
+                arm.position = SCNVector3(side * 0.01, -0.11, 0.12)
+                arm.eulerAngles = SCNVector3(-0.06, 0, Float(side) * -0.08)
                 shoulder.addChildNode(arm)
             }
 
@@ -826,26 +1375,26 @@ struct SceneKitView: NSViewRepresentable {
             for side in [CGFloat(-1), CGFloat(1)] {
                 let hip = SCNNode()
                 hip.name = side < 0 ? "bubu-foot-l" : "bubu-foot-r"
-                hip.position = SCNVector3(side * 0.20, -0.60, 0.01)
+                hip.position = SCNVector3(side * 0.21, -0.82, 0.18)
                 model.addChildNode(hip)
 
-                let legGeometry = SCNCapsule(capRadius: 0.115, height: 0.28)
+                let legGeometry = SCNCapsule(capRadius: 0.14, height: 0.25)
                 legGeometry.materials = [matteMaterial(style.body)]
                 let leg = SCNNode(geometry: legGeometry)
-                leg.position = SCNVector3(0, -0.10, 0.01)
+                leg.position = SCNVector3(0, 0, 0.02)
                 hip.addChildNode(leg)
 
                 // 脚掌（身体同色，向前探出）
-                let foot = sphereNode(radius: 0.125, color: style.body, segments: 32)
-                foot.position = SCNVector3(0, -0.20, 0.05)
-                foot.scale = SCNVector3(1.0, 0.60, 1.20)
+                let foot = sphereNode(radius: 0.135, color: style.body, segments: 32)
+                foot.position = SCNVector3(0, -0.09, 0.16)
+                foot.scale = SCNVector3(1.08, 0.66, 1.18)
                 hip.addChildNode(foot)
 
                 // 深棕脚垫（布布特征）
                 if style.hasToeCaps {
-                    let toe = sphereNode(radius: 0.065, color: style.accent, segments: 24)
-                    toe.position = SCNVector3(0, -0.21, 0.15)
-                    toe.scale = SCNVector3(1.1, 0.72, 0.9)
+                    let toe = sphereNode(radius: 0.075, color: style.accent, segments: 24)
+                    toe.position = SCNVector3(0, -0.10, 0.32)
+                    toe.scale = SCNVector3(1.15, 0.72, 0.48)
                     hip.addChildNode(toe)
                 }
             }
@@ -991,7 +1540,15 @@ struct SceneKitView: NSViewRepresentable {
             // （如睡眠的侧倾、待机浮动的高度），不复位会越切越歪、越飘越高
             characterNode.removeAllActions()
             characterNode.position = SCNVector3Zero
+            characterNode.scale = SCNVector3(1, 1, 1)
             characterNode.eulerAngles = SCNVector3Zero
+            footLNode?.removeAction(forKey: "state-gait")
+            footRNode?.removeAction(forKey: "state-gait")
+            modelNode?.removeAction(forKey: "sleep-breathe")
+            modelNode?.scale = SCNVector3(1, 1, 1)
+            modelNode?.position = SCNVector3Zero
+            modelNode?.eulerAngles = SCNVector3Zero
+            resetIllustratedStateMorphs()
 
             switch state {
             case .idle:
@@ -1002,6 +1559,12 @@ struct SceneKitView: NSViewRepresentable {
                 startTalkingAnimation()
             case .happy:
                 startHappyAnimation()
+            case .walking:
+                startWalkingAnimation()
+            case .running:
+                startRunningAnimation()
+            case .waving:
+                startWavingAnimation()
             case .sleeping:
                 startSleepingAnimation()
             }
@@ -1011,16 +1574,19 @@ struct SceneKitView: NSViewRepresentable {
 
         func startIdleAnimation() {
             // 轻微上下浮动
-            let floatUp = SCNAction.moveBy(x: 0, y: 0.05, z: 0, duration: 1.5)
+            let distance: CGFloat = illustratedSpriteNode == nil ? 0.05 : 0.025
+            let floatUp = SCNAction.moveBy(x: 0, y: distance, z: 0, duration: 1.5)
             floatUp.timingMode = .easeInEaseOut
-            let floatDown = SCNAction.moveBy(x: 0, y: -0.05, z: 0, duration: 1.5)
+            let floatDown = SCNAction.moveBy(x: 0, y: -distance, z: 0, duration: 1.5)
             floatDown.timingMode = .easeInEaseOut
             let floatSequence = SCNAction.sequence([floatUp, floatDown])
             let floatForever = SCNAction.repeatForever(floatSequence)
 
             // 轻微旋转
-            let rotateLeft = SCNAction.rotateBy(x: 0, y: 0.05, z: 0, duration: 2.0)
-            let rotateRight = SCNAction.rotateBy(x: 0, y: -0.05, z: 0, duration: 2.0)
+            let yRotation: CGFloat = illustratedSpriteNode == nil ? 0.05 : 0
+            let zRotation: CGFloat = illustratedSpriteNode == nil ? 0 : 0.018
+            let rotateLeft = SCNAction.rotateBy(x: 0, y: yRotation, z: zRotation, duration: 2.0)
+            let rotateRight = SCNAction.rotateBy(x: 0, y: -yRotation, z: -zRotation, duration: 2.0)
             let rotateSequence = SCNAction.sequence([rotateLeft, rotateRight])
             let rotateForever = SCNAction.repeatForever(rotateSequence)
 
@@ -1043,12 +1609,19 @@ struct SceneKitView: NSViewRepresentable {
 
         func startTalkingAnimation() {
             // 轻微缩放模拟说话
-            let scaleUp = SCNAction.scale(by: 1.05, duration: 0.2)
-            let scaleDown = SCNAction.scale(by: 1/1.05, duration: 0.2)
+            let scaleUp = SCNAction.scale(by: 1.025, duration: 0.2)
+            let scaleDown = SCNAction.scale(by: 1/1.025, duration: 0.2)
             let scaleSequence = SCNAction.sequence([scaleUp, scaleDown])
             let scaleForever = SCNAction.repeatForever(scaleSequence)
 
             characterNode.runAction(scaleForever)
+            if let sprite = illustratedSpriteNode,
+               let open = illustratedMorphTransition(.talk, from: 0, to: 1, duration: 0.12),
+               let close = illustratedMorphTransition(.talk, from: 1, to: 0, duration: 0.16) {
+                sprite.runAction(.repeatForever(.sequence([
+                    open, close, .wait(duration: 0.08)
+                ])), forKey: "illustrated-state")
+            }
         }
 
         func startHappyAnimation() {
@@ -1060,28 +1633,124 @@ struct SceneKitView: NSViewRepresentable {
             let jumpSequence = SCNAction.sequence([jumpUp, jumpDown])
             let jumpRepeat = SCNAction.repeat(jumpSequence, count: 3)
 
-            // 旋转
-            let spin = SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 0.6)
+            let celebrate: SCNAction
+            if illustratedSpriteNode != nil {
+                let tiltLeft = SCNAction.rotateBy(x: 0, y: 0, z: 0.10, duration: 0.15)
+                let tiltRight = SCNAction.rotateBy(x: 0, y: 0, z: -0.20, duration: 0.30)
+                let center = SCNAction.rotateBy(x: 0, y: 0, z: 0.10, duration: 0.15)
+                celebrate = .sequence([tiltLeft, tiltRight, center])
+            } else {
+                celebrate = SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 0.6)
+            }
 
-            characterNode.runAction(SCNAction.group([jumpRepeat, spin])) { [weak self] in
+            characterNode.runAction(SCNAction.group([jumpRepeat, celebrate])) { [weak self] in
                 self?.startIdleAnimation()
             }
         }
 
-        func startSleepingAnimation() {
-            // 缓慢呼吸
-            let breatheIn = SCNAction.scale(by: 1.03, duration: 2.0)
-            breatheIn.timingMode = .easeInEaseOut
-            let breatheOut = SCNAction.scale(by: 1/1.03, duration: 2.0)
-            breatheOut.timingMode = .easeInEaseOut
-            let breatheSequence = SCNAction.sequence([breatheIn, breatheOut])
-            let breatheForever = SCNAction.repeatForever(breatheSequence)
-
-            // 轻微倾斜（角度收小，太歪像出 bug；唤醒时由 applyAnimation 复位）
-            let tilt = SCNAction.rotateTo(x: 0, y: 0, z: 0.05, duration: 1.0)
-
-            characterNode.runAction(SCNAction.group([breatheForever, tilt]))
+        func startWalkingAnimation() {
+            startGaitAnimation(stepDuration: 0.20, lift: 0.038, tilt: 0.025)
         }
+
+        func startRunningAnimation() {
+            startGaitAnimation(stepDuration: 0.105, lift: 0.07, tilt: 0.045)
+        }
+
+        private func startGaitAnimation(
+            stepDuration: TimeInterval,
+            lift: CGFloat,
+            tilt: CGFloat
+        ) {
+            let up = SCNAction.moveBy(x: 0, y: lift, z: 0, duration: stepDuration)
+            up.timingMode = .easeOut
+            let down = SCNAction.moveBy(x: 0, y: -lift, z: 0, duration: stepDuration)
+            down.timingMode = .easeIn
+            let lean = SCNAction.rotateBy(x: 0, y: 0, z: tilt, duration: stepDuration)
+            let leanBack = SCNAction.rotateBy(x: 0, y: 0, z: -tilt, duration: stepDuration)
+            characterNode.runAction(.group([
+                .repeatForever(.sequence([up, down])),
+                .repeatForever(.sequence([lean, leanBack]))
+            ]))
+
+            if let sprite = illustratedSpriteNode,
+               let leftUp = illustratedMorphTransition(.leftStep, from: 0, to: 1, duration: stepDuration),
+               let leftDown = illustratedMorphTransition(.leftStep, from: 1, to: 0, duration: stepDuration),
+               let rightUp = illustratedMorphTransition(.rightStep, from: 0, to: 1, duration: stepDuration),
+               let rightDown = illustratedMorphTransition(.rightStep, from: 1, to: 0, duration: stepDuration) {
+                sprite.runAction(.repeatForever(.sequence([
+                    leftUp, leftDown, rightUp, rightDown
+                ])), forKey: "illustrated-state")
+            } else {
+                startFallbackLimbGait(stepDuration: stepDuration)
+            }
+        }
+
+        private func startFallbackLimbGait(stepDuration: TimeInterval) {
+            func run(on foot: SCNNode?, delayed: Bool) {
+                guard let foot else { return }
+                let forward = SCNAction.rotateBy(x: -0.48, y: 0, z: 0, duration: stepDuration)
+                let backward = SCNAction.rotateBy(x: 0.48, y: 0, z: 0, duration: stepDuration)
+                let gait = SCNAction.repeatForever(.sequence([forward, backward]))
+                foot.runAction(delayed ? .sequence([.wait(duration: stepDuration), gait]) : gait,
+                               forKey: "state-gait")
+            }
+            run(on: footLNode, delayed: false)
+            run(on: footRNode, delayed: true)
+        }
+
+        func startWavingAnimation() {
+            let rise = SCNAction.moveBy(x: 0, y: 0.035, z: 0, duration: 0.25)
+            let settle = SCNAction.moveBy(x: 0, y: -0.035, z: 0, duration: 0.25)
+            characterNode.runAction(.repeat(.sequence([rise, settle]), count: 4))
+            gestureWave()
+        }
+
+        func startSleepingAnimation() {
+            let settle: SCNAction
+            if let sprite = illustratedSpriteNode,
+               let sleepImage = illustratedSleepImage {
+                // 专用趴睡帧：头伏在手机/前爪上，身体横在后方，不再旋转整张立绘。
+                sprite.geometry?.firstMaterial?.diffuse.contents = sleepImage
+                let sleepAspect = sleepImage.size.width / max(sleepImage.size.height, 1)
+                sprite.scale = SCNVector3(sleepAspect / max(illustratedBaseAspect, 0.01), 1, 1)
+                settle = .group([
+                    .move(to: SCNVector3(0, -0.34, 0), duration: 0.58),
+                    .scale(to: 0.92, duration: 0.58)
+                ])
+            } else {
+                // 没有专用姿态的角色先采用伏低、横向舒展的回退，而不是整图旋转 90°。
+                settle = .group([
+                    .move(to: SCNVector3(0.12, -0.40, 0), duration: 0.58),
+                    .rotateTo(x: 0, y: 0, z: -0.10, duration: 0.58),
+                    .customAction(duration: 0.58) { node, elapsed in
+                        let p = min(max(elapsed / 0.58, 0), 1)
+                        let eased = p * p * (3 - 2 * p)
+                        node.scale = SCNVector3(1 + 0.10 * eased, 1 - 0.28 * eased, 1)
+                    }
+                ])
+            }
+            settle.timingMode = .easeInEaseOut
+            characterNode.runAction(settle, forKey: "sleep-pose")
+
+            // 独立驱动身体呼吸：胸腹上下起伏并略微扩张，每个周期精确回到基准。
+            let breathe = SCNAction.customAction(duration: 2.6) { node, elapsed in
+                let phase = elapsed / 2.6 * .pi * 2
+                let inhale = (sin(phase - .pi / 2) + 1) / 2
+                node.scale = SCNVector3(1 + 0.012 * inhale, 1 + 0.038 * inhale, 1)
+                node.position.y = 0.018 * inhale
+            }
+            breathe.timingMode = .easeInEaseOut
+            modelNode?.runAction(.repeatForever(breathe), forKey: "sleep-breathe")
+        }
+    }
+}
+
+/// AppKit 没有 UIKit 的 `require(toFail:)` 设置方法，需通过可覆写关系声明
+/// 让双击识别优先，避免第一次单击提前触发身体互动。
+private final class SceneSingleClickGestureRecognizer: NSClickGestureRecognizer {
+    override func shouldRequireFailure(of otherGestureRecognizer: NSGestureRecognizer) -> Bool {
+        guard let click = otherGestureRecognizer as? NSClickGestureRecognizer else { return false }
+        return click.numberOfClicksRequired > numberOfClicksRequired
     }
 }
 
@@ -1091,11 +1760,17 @@ struct Sprite3DView: View {
     @ObservedObject var viewModel: SpriteViewModel
     /// 点击未命中角色部位时的回落行为（取词/打开面板），由 SpriteContainerView 注入
     var onBackgroundTap: (() -> Void)? = nil
+    var onBodyPartTap: ((SpriteBodyPart) -> Void)? = nil
+    var onDoubleTap: (() -> Void)? = nil
 
     /// 精灵区域尺寸：跟 2D 模式一致，缩放靠放大视图而不是放大场景节点
     /// （放大节点会超出相机视野截掉头顶）；上限对齐窗口宽度 280
     private var spriteSize: CGFloat {
         min(150 * viewModel.scale, 280)
+    }
+
+    private var characterHasPhone: Bool {
+        ["bubu", "yier_phone"].contains(viewModel.currentCharacter.imageName)
     }
 
     var body: some View {
@@ -1122,10 +1797,20 @@ struct Sprite3DView: View {
                 SceneKitView(
                     viewModel: viewModel,
                     animationState: viewModel.animationState,
-                    onBackgroundTap: onBackgroundTap
+                    facingDirection: viewModel.facingDirection,
+                    onBackgroundTap: onBackgroundTap,
+                    onBodyPartTap: onBodyPartTap,
+                    onDoubleTap: onDoubleTap
                 )
                 .frame(width: spriteSize, height: spriteSize)
                 .opacity(viewModel.opacity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(viewModel.currentCharacter.name)角色")
+                .accessibilityHint(characterHasPhone ? "点击手机和布布聊天；点击其他部位会有不同反应" : "点击角色互动")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction {
+                    onBodyPartTap?(characterHasPhone ? .phone : .head)
+                }
 
                 // 拖拽高亮
                 if viewModel.isDragOver {
@@ -1139,7 +1824,7 @@ struct Sprite3DView: View {
                 // 睡眠效果
                 if viewModel.animationState == .sleeping {
                     ZzzView()
-                        .offset(x: 50, y: -30)
+                        .offset(x: -48, y: -28)
                 }
 
                 // 思考效果
@@ -1147,6 +1832,7 @@ struct Sprite3DView: View {
                     ThinkingDotsView()
                         .offset(x: 60, y: 0)
                 }
+
             }
             .frame(height: spriteSize)
         }

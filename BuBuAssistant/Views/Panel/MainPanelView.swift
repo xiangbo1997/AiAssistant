@@ -12,6 +12,7 @@ struct MainPanelView: View {
     @EnvironmentObject var notesViewModel: NotesViewModel
     @EnvironmentObject var spriteViewModel: SpriteViewModel
     @EnvironmentObject var settingsViewModel: SettingsViewModel
+    @EnvironmentObject var chatViewModel: ChatViewModel
 
     @State private var selectedTab: PanelType
 
@@ -43,6 +44,7 @@ struct MainPanelView: View {
 
     /// 标签定义：标题、图标与 Cmd+数字 快捷键
     private static let tabs: [(type: PanelType, title: String, icon: String, key: KeyEquivalent)] = [
+        (.chat, "聊天", "bubble.left.and.bubble.right", "6"),
         (.notes, "便签", "note.text", "1"),
         (.search, "搜索", "magnifyingglass", "2"),
         (.translation, "翻译", "globe", "3"),
@@ -51,20 +53,22 @@ struct MainPanelView: View {
     ]
 
     private var tabBar: some View {
-        HStack(spacing: 8) {
-            ForEach(Self.tabs, id: \.type) { tab in
-                TabButton(
-                    title: tab.title,
-                    icon: tab.icon,
-                    isSelected: selectedTab == tab.type
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = tab.type }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Self.tabs, id: \.type) { tab in
+                    TabButton(
+                        title: tab.title,
+                        icon: tab.icon,
+                        isSelected: selectedTab == tab.type
+                    ) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { selectedTab = tab.type }
+                    }
+                    .keyboardShortcut(tab.key, modifiers: .command)
+                    .help("\(tab.title)（⌘\(tab.key.character)）")
                 }
-                .keyboardShortcut(tab.key, modifiers: .command)
-                .help("\(tab.title)（⌘\(tab.key.character)）")
             }
+            .padding(.horizontal, 18)
         }
-        .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .background(
             BuBuColors.creamWhite
@@ -77,6 +81,8 @@ struct MainPanelView: View {
     @ViewBuilder
     private var contentView: some View {
         switch selectedTab {
+        case .chat:
+            ChatView()
         case .notes:
             NotesView()
         case .search:
@@ -134,5 +140,6 @@ struct TabButton: View {
         .environmentObject(NotesViewModel())
         .environmentObject(SpriteViewModel())
         .environmentObject(SettingsViewModel())
+        .environmentObject(ChatViewModel())
         .frame(width: 480, height: 600)
 }

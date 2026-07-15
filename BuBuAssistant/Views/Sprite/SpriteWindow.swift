@@ -8,21 +8,30 @@
 
 import SwiftUI
 import AppKit
+import Combine
 
 class SpriteWindow: NSPanel {
     private var spriteViewModel: SpriteViewModel
     private var notesViewModel: NotesViewModel
+    private var chatViewModel: ChatViewModel
     private var onShowPanel: ((PanelType) -> Void)?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private var movementCancellable: AnyCancellable?
+    private var movementTimer: Timer?
+    private var isUserDragging = false
+    private var isTurningAtEdge = false
+    private var movementPauseUntil = Date.distantPast
 
     init(
         spriteViewModel: SpriteViewModel,
         notesViewModel: NotesViewModel,
+        chatViewModel: ChatViewModel,
         onShowPanel: ((PanelType) -> Void)?
     ) {
         self.spriteViewModel = spriteViewModel
         self.notesViewModel = notesViewModel
+        self.chatViewModel = chatViewModel
         self.onShowPanel = onShowPanel
 
         // 窗口大小 - 增加高度以容纳气泡和翻译结果
@@ -38,6 +47,7 @@ class SpriteWindow: NSPanel {
         setupWindow()
         setupContentView()
         setupMouseMonitor()
+        setupMovementObserver()
     }
 
     deinit {
@@ -47,6 +57,8 @@ class SpriteWindow: NSPanel {
         if let monitor = localMouseMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        movementTimer?.invalidate()
+        movementCancellable?.cancel()
     }
 
     /// 设置鼠标监听，在点击发生前缓存前台应用
@@ -63,17 +75,106 @@ class SpriteWindow: NSPanel {
         }
 
         // 本地监听器：作为备份
-        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]
+        ) { [weak self] event in
             if let window = self, event.window == window {
-                SelectionService.shared.cacheFrontmostApp()
+                switch event.type {
+                case .leftMouseDown:
+                    SelectionService.shared.cacheFrontmostApp()
+                case .leftMouseDragged:
+                    window.isUserDragging = true
+                case .leftMouseUp:
+                    window.isUserDragging = false
+                case .rightMouseDown:
+                    // 角色正在移动时先停住，给右键菜单留出稳定的点击时间。
+                    window.movementPauseUntil = Date().addingTimeInterval(6)
+                default:
+                    break
+                }
             }
             return event
         }
     }
 
+    /// 走路/跑步不仅原地踏步，还会驱动透明悬浮窗在桌面上移动。
+    private func setupMovementObserver() {
+        movementCancellable = spriteViewModel.$animationState
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                switch state {
+                case .walking:
+                    self?.startWindowMovement(pointsPerSecond: 72)
+                case .running:
+                    self?.startWindowMovement(pointsPerSecond: 175)
+                default:
+                    self?.stopWindowMovement()
+                }
+            }
+    }
+
+    private func startWindowMovement(pointsPerSecond: CGFloat) {
+        movementTimer?.invalidate()
+        movementPauseUntil = .distantPast
+        faceDirectionWithMoreSpace()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            self?.advanceWindow(pointsPerSecond: pointsPerSecond)
+        }
+        movementTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopWindowMovement() {
+        movementTimer?.invalidate()
+        movementTimer = nil
+        isTurningAtEdge = false
+    }
+
+    private func advanceWindow(pointsPerSecond: CGFloat) {
+        guard !isUserDragging, !isTurningAtEdge, Date() >= movementPauseUntil else { return }
+
+        let activeScreen = screen ?? NSScreen.screens.first(where: { $0.frame.intersects(frame) }) ?? NSScreen.main
+        guard let visibleFrame = activeScreen?.visibleFrame else { return }
+
+        let minX = visibleFrame.minX
+        let maxX = max(visibleFrame.maxX - frame.width, minX)
+        var nextX = frame.origin.x + spriteViewModel.facingDirection * pointsPerSecond / 60.0
+
+        if nextX >= maxX {
+            nextX = maxX
+            turnAtEdge(toward: -1)
+        } else if nextX <= minX {
+            nextX = minX
+            turnAtEdge(toward: 1)
+        }
+
+        setFrameOrigin(NSPoint(x: nextX, y: frame.origin.y))
+    }
+
+    private func faceDirectionWithMoreSpace() {
+        let activeScreen = screen ?? NSScreen.screens.first(where: { $0.frame.intersects(frame) }) ?? NSScreen.main
+        guard let visibleFrame = activeScreen?.visibleFrame else { return }
+        let leftSpace = frame.minX - visibleFrame.minX
+        let rightSpace = visibleFrame.maxX - frame.maxX
+        spriteViewModel.facingDirection = rightSpace >= leftSpace ? 1 : -1
+    }
+
+    private func turnAtEdge(toward direction: CGFloat) {
+        guard !isTurningAtEdge else { return }
+        isTurningAtEdge = true
+        spriteViewModel.facingDirection = direction
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
+            self?.isTurningAtEdge = false
+        }
+    }
+
     private func setupWindow() {
-        // 窗口层级 - 悬浮但不遮挡全屏应用
-        level = .floating
+        // 角色必须稳定显示在其它应用之上；statusBar 高于普通 floating 窗口，
+        // 同时低于系统级 screenSaver 层，避免遮挡锁屏和关键系统界面。
+        level = .statusBar
+        isFloatingPanel = true
+        hidesOnDeactivate = false
 
         // 透明背景
         isOpaque = false
@@ -81,7 +182,7 @@ class SpriteWindow: NSPanel {
         hasShadow = false
 
         // 允许在所有空间显示
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
         // 不显示在任务切换器中
         collectionBehavior.insert(.transient)
@@ -105,6 +206,11 @@ class SpriteWindow: NSPanel {
         let spriteView = SpriteContainerView(
             spriteViewModel: spriteViewModel,
             notesViewModel: notesViewModel,
+            chatViewModel: chatViewModel,
+            onRequestChatFocus: { [weak self] in
+                self?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            },
             onShowPanel: onShowPanel
         )
 
@@ -130,8 +236,13 @@ class SpriteWindow: NSPanel {
 struct SpriteContainerView: View {
     @ObservedObject var spriteViewModel: SpriteViewModel
     @ObservedObject var notesViewModel: NotesViewModel
+    @ObservedObject var chatViewModel: ChatViewModel
     @ObservedObject var settingsViewModel: SettingsViewModel = SettingsViewModel.shared
+    var onRequestChatFocus: (() -> Void)?
     var onShowPanel: ((PanelType) -> Void)?
+
+    @State private var isQuickChatPresented = false
+    @State private var quickChatDraft = ""
 
     var body: some View {
         ZStack {
@@ -141,21 +252,22 @@ struct SpriteContainerView: View {
                 // 未命中角色时回落到原有单击行为（取词/打开面板）
                 Sprite3DView(viewModel: spriteViewModel, onBackgroundTap: {
                     handleTap()
-                })
-                .onTapGesture(count: 2) {
+                }, onBodyPartTap: { part in
+                    handleBodyPartTap(part)
+                }, onDoubleTap: {
                     handleDoubleTap()
-                }
+                })
                 .contextMenu {
                     contextMenuContent
                 }
             } else {
-                SpriteView(viewModel: spriteViewModel)
-                    .onTapGesture(count: 2) {
-                        handleDoubleTap()
-                    }
-                    .onTapGesture(count: 1) {
-                        handleTap()
-                    }
+                SpriteView(viewModel: spriteViewModel, onBodyPartTap: { part in
+                    handleBodyPartTap(part)
+                }, onBackgroundTap: {
+                    handleTap()
+                }, onDoubleTap: {
+                    handleDoubleTap()
+                })
                     .contextMenu {
                         contextMenuContent
                     }
@@ -191,6 +303,10 @@ struct SpriteContainerView: View {
                     removal: .opacity
                 ))
             }
+
+            if !spriteViewModel.showActionMenu, isQuickChatPresented {
+                quickChatOverlay
+            }
         }
         .frame(width: 280, height: 400)
         .onDrop(of: [.text, .plainText, .utf8PlainText], isTargeted: $spriteViewModel.isDragOver) { providers in
@@ -204,11 +320,72 @@ struct SpriteContainerView: View {
                 spriteViewModel.handleDragExit()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showSpriteQuickChat)) { _ in
+            // 全局快捷键只发出意图，实际仍复用手机点击的完整快聊状态流。
+            presentQuickChat()
+        }
         .onAppear {
-            // 显示问候
+            // 首次升级只提示一次入口，随后完全由模型本体承载聊天，不常驻额外按钮。
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                spriteViewModel.showGreeting()
+                let hintKey = "didShowPhoneChatHintV1"
+                let hasPhone = ["bubu", "yier_phone"].contains(spriteViewModel.currentCharacter.imageName)
+                if hasPhone, !UserDefaults.standard.bool(forKey: hintKey) {
+                    spriteViewModel.showBubble(
+                        message: "点点我手里的手机，就能直接和我聊天啦~",
+                        type: .greeting,
+                        duration: 5
+                    )
+                    UserDefaults.standard.set(true, forKey: hintKey)
+                } else {
+                    spriteViewModel.showGreeting()
+                }
             }
+        }
+    }
+
+    // MARK: - 角色旁快速聊天
+
+    @ViewBuilder
+    private var quickChatOverlay: some View {
+        VStack {
+            Spacer()
+            SpriteQuickChatComposer(
+                draft: $quickChatDraft,
+                chatViewModel: chatViewModel,
+                onSent: dismissQuickChat,
+                onClose: dismissQuickChat,
+                onOpenFullChat: {
+                    dismissQuickChat()
+                    onShowPanel?(.chat)
+                }
+            )
+            .padding(.horizontal, 8)
+            .padding(.bottom, 132)
+            .transition(.scale(scale: 0.82, anchor: .bottom).combined(with: .opacity))
+        }
+    }
+
+    private func presentQuickChat() {
+        if spriteViewModel.animationState == .sleeping {
+            spriteViewModel.wakeUp()
+        }
+        if spriteViewModel.animationState == .walking || spriteViewModel.animationState == .running {
+            spriteViewModel.stopCurrentAction()
+        }
+        if !chatViewModel.isStreaming {
+            spriteViewModel.hideBubble()
+        }
+        spriteViewModel.setQuickChatPresented(true)
+        onRequestChatFocus?()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            isQuickChatPresented = true
+        }
+    }
+
+    private func dismissQuickChat() {
+        spriteViewModel.setQuickChatPresented(false)
+        withAnimation(.easeOut(duration: 0.18)) {
+            isQuickChatPresented = false
         }
     }
 
@@ -216,6 +393,14 @@ struct SpriteContainerView: View {
 
     @ViewBuilder
     private var contextMenuContent: some View {
+        Button {
+            onShowPanel?(.chat)
+        } label: {
+            Label("和布布聊天", systemImage: "bubble.left.and.bubble.right")
+        }
+
+        Divider()
+
         Button {
             onShowPanel?(.notes)
         } label: {
@@ -250,6 +435,42 @@ struct SpriteContainerView: View {
             NotificationCenter.default.post(name: .showGuidance, object: nil)
         } label: {
             Label("截图求指导", systemImage: "camera.viewfinder")
+        }
+
+        Divider()
+
+        Menu("动作") {
+            Button {
+                spriteViewModel.playWalking()
+            } label: {
+                Label("走路", systemImage: "figure.walk")
+            }
+
+            Button {
+                spriteViewModel.playRunning()
+            } label: {
+                Label("跑步", systemImage: "figure.run")
+            }
+
+            Button {
+                spriteViewModel.showHappy()
+            } label: {
+                Label("跳跃", systemImage: "arrow.up")
+            }
+
+            Button {
+                spriteViewModel.playWaving()
+            } label: {
+                Label("挥手", systemImage: "hand.wave")
+            }
+
+            Divider()
+
+            Button {
+                spriteViewModel.stopCurrentAction()
+            } label: {
+                Label("停止动作", systemImage: "stop.fill")
+            }
         }
 
         Divider()
@@ -291,7 +512,19 @@ struct SpriteContainerView: View {
 
     // MARK: - 交互处理
 
+    private func handleBodyPartTap(_ part: SpriteBodyPart) {
+        spriteViewModel.react(to: part)
+        if part == .phone {
+            presentQuickChat()
+        }
+    }
+
     private func handleTap() {
+        if spriteViewModel.animationState == .walking || spriteViewModel.animationState == .running {
+            spriteViewModel.stopCurrentAction()
+            return
+        }
+
         // 只重置睡眠计时器，不隐藏气泡
         spriteViewModel.resetSleepTimer()
         let showPanel = onShowPanel
@@ -385,6 +618,140 @@ struct SpriteContainerView: View {
         case .guidance:
             // 截图指导是独立窗口，已由 executeAction 发通知打开，此处无需切面板
             break
+        }
+    }
+}
+
+// MARK: - 角色旁紧凑聊天输入
+
+private struct SpriteQuickChatComposer: View {
+    @Binding var draft: String
+    @ObservedObject var chatViewModel: ChatViewModel
+
+    let onSent: () -> Void
+    let onClose: () -> Void
+    let onOpenFullChat: () -> Void
+
+    @FocusState private var inputFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 9) {
+            HStack(spacing: 7) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("和布布说话")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(BuBuColors.chocolateBrown)
+                    Text(chatViewModel.isStreaming ? chatViewModel.expression.title : "我在听呀")
+                        .font(BuBuFonts.tiny)
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.52))
+                }
+
+                Spacer()
+
+                Button(action: onOpenFullChat) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .help("打开完整聊天")
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .help("收起")
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(BuBuColors.chocolateBrown.opacity(0.55))
+
+            if chatViewModel.isStreaming {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("布布正在回复…")
+                        .font(BuBuFonts.caption)
+                        .foregroundColor(BuBuColors.chocolateBrown.opacity(0.65))
+                    Spacer()
+                    Button {
+                        chatViewModel.stopGenerating()
+                    } label: {
+                        Label("停止", systemImage: "stop.fill")
+                            .font(BuBuFonts.tiny)
+                            .foregroundColor(BuBuColors.coralPink)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(height: 36)
+            } else {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("和布布说点什么…", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(BuBuFonts.caption)
+                        .lineLimit(1...3)
+                        .focused($inputFocused)
+                        .onSubmit(sendDraft)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 11)
+                                .fill(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 11)
+                                        .stroke(BuBuColors.skyBlue.opacity(0.24), lineWidth: 1)
+                                )
+                        )
+
+                    Button(action: sendDraft) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 34, height: 34)
+                            .background(Circle().fill(BuBuColors.skyBlue))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help("发送")
+                }
+            }
+        }
+        .padding(11)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(BuBuColors.creamWhite.opacity(0.98))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.85), lineWidth: 1)
+                )
+                .shadow(color: BuBuColors.chocolateBrown.opacity(0.20), radius: 14, x: 0, y: 7)
+        )
+        .overlay(alignment: .bottom) {
+            Triangle()
+                .fill(BuBuColors.creamWhite)
+                .frame(width: 16, height: 10)
+                .rotationEffect(.degrees(180))
+                .offset(y: 9)
+        }
+        .onAppear(perform: focusInput)
+        .onChange(of: chatViewModel.isStreaming) { _, isStreaming in
+            if !isStreaming {
+                focusInput()
+            }
+        }
+    }
+
+    private func sendDraft() {
+        let text = draft
+        if chatViewModel.send(text) {
+            draft = ""
+            onSent()
+        } else {
+            focusInput()
+        }
+    }
+
+    private func focusInput() {
+        guard !chatViewModel.isStreaming else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            inputFocused = true
         }
     }
 }

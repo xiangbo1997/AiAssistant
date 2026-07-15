@@ -157,6 +157,9 @@ struct CharacterSettingsView: View {
     @EnvironmentObject var spriteViewModel: SpriteViewModel
     @State private var showingImagePicker = false
     @State private var importError: String?
+    @State private var editingCharacter: SpriteCharacter?
+    @State private var characterName = ""
+    @State private var deletingCharacter: SpriteCharacter?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -169,7 +172,14 @@ struct CharacterSettingsView: View {
                 ForEach(spriteViewModel.allCharacters) { character in
                     CharacterCard(
                         character: character,
-                        isSelected: character.id == viewModel.currentCharacter.id
+                        isSelected: character.id == viewModel.currentCharacter.id,
+                        onRename: character.isCustom ? {
+                            characterName = character.name
+                            editingCharacter = character
+                        } : nil,
+                        onDelete: character.isCustom ? {
+                            deletingCharacter = character
+                        } : nil
                     ) {
                         viewModel.currentCharacter = character
                     }
@@ -230,6 +240,38 @@ struct CharacterSettingsView: View {
         } message: {
             Text(importError ?? "")
         }
+        .alert("修改角色名称", isPresented: Binding(
+            get: { editingCharacter != nil },
+            set: { if !$0 { editingCharacter = nil } }
+        )) {
+            TextField("角色名称", text: $characterName)
+            Button("取消", role: .cancel) { editingCharacter = nil }
+            Button("保存") {
+                guard let character = editingCharacter else { return }
+                spriteViewModel.renameCustomCharacter(character, to: characterName)
+                if viewModel.currentCharacter.id == character.id,
+                   let renamed = spriteViewModel.customCharacters.first(where: { $0.id == character.id }) {
+                    viewModel.currentCharacter = renamed
+                }
+                editingCharacter = nil
+            }
+        }
+        .alert("删除自定义角色？", isPresented: Binding(
+            get: { deletingCharacter != nil },
+            set: { if !$0 { deletingCharacter = nil } }
+        )) {
+            Button("取消", role: .cancel) { deletingCharacter = nil }
+            Button("删除", role: .destructive) {
+                guard let character = deletingCharacter else { return }
+                spriteViewModel.removeCustomCharacter(character)
+                if viewModel.currentCharacter.id == character.id {
+                    viewModel.currentCharacter = .bubu
+                }
+                deletingCharacter = nil
+            }
+        } message: {
+            Text("角色图片也会从本机应用数据中删除，此操作无法撤销。")
+        }
     }
 
     private func addCustomCharacter(from url: URL) {
@@ -269,6 +311,8 @@ struct CharacterSettingsView: View {
 struct CharacterCard: View {
     let character: SpriteCharacter
     let isSelected: Bool
+    let onRename: (() -> Void)?
+    let onDelete: (() -> Void)?
     let onSelect: () -> Void
 
     var body: some View {
@@ -305,6 +349,20 @@ struct CharacterCard: View {
             )
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            if character.isCustom {
+                Menu {
+                    Button("修改名称", systemImage: "pencil", action: { onRename?() })
+                    Divider()
+                    Button("删除角色", systemImage: "trash", role: .destructive, action: { onDelete?() })
+                } label: {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .foregroundStyle(BuBuColors.chocolateBrown, Color.white)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+        }
     }
 }
 
@@ -597,8 +655,42 @@ struct AISettingsView: View {
 
 // MARK: - 快捷键设置
 
+private struct ShortcutDisplayItem: Identifiable {
+    let icon: String
+    let title: String
+    let shortcut: String
+    let color: Color
+
+    var id: String { title }
+}
+
 struct ShortcutsSettingsView: View {
     @EnvironmentObject var viewModel: SettingsViewModel
+
+    private var primaryShortcuts: [ShortcutDisplayItem] {
+        [
+            .init(icon: "bubble.left.and.bubble.right", title: "和布布聊天", shortcut: AppShortcuts.chat, color: BuBuColors.coralPink),
+            .init(icon: "message.fill", title: "角色旁快聊", shortcut: AppShortcuts.quickChat, color: BuBuColors.peachBlush),
+            .init(icon: "note.text", title: "打开便签", shortcut: viewModel.globalNoteShortcut, color: BuBuColors.mintGreen),
+            .init(icon: "magnifyingglass", title: "智能搜索", shortcut: viewModel.globalSearchShortcut, color: BuBuColors.skyBlue),
+            .init(icon: "globe", title: "快速翻译", shortcut: viewModel.globalTranslateShortcut, color: BuBuColors.lavender),
+            .init(icon: "key.fill", title: "打开备忘", shortcut: AppShortcuts.memo, color: BuBuColors.lavender),
+            .init(icon: "text.viewfinder", title: "截图翻译", shortcut: AppShortcuts.screenshotTranslation, color: BuBuColors.mintGreen),
+            .init(icon: "camera.viewfinder", title: "截图求指导", shortcut: AppShortcuts.guidance, color: BuBuColors.coralPink)
+        ]
+    }
+
+    private var spriteShortcuts: [ShortcutDisplayItem] {
+        [
+            .init(icon: "eye", title: "显示/隐藏布布", shortcut: AppShortcuts.toggleSprite, color: BuBuColors.skyBlue),
+            .init(icon: "cube", title: "切换 2D/3D", shortcut: AppShortcuts.toggleDimension, color: BuBuColors.lavender),
+            .init(icon: "figure.walk", title: "走路", shortcut: AppShortcuts.walk, color: BuBuColors.mintGreen),
+            .init(icon: "figure.run", title: "跑步", shortcut: AppShortcuts.run, color: BuBuColors.skyBlue),
+            .init(icon: "arrow.up", title: "跳跃", shortcut: AppShortcuts.jump, color: BuBuColors.peachBlush),
+            .init(icon: "hand.wave", title: "挥手", shortcut: AppShortcuts.wave, color: BuBuColors.coralPink),
+            .init(icon: "stop.fill", title: "停止动作", shortcut: AppShortcuts.stopAction, color: BuBuColors.chocolateBrown)
+        ]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -617,38 +709,19 @@ struct ShortcutsSettingsView: View {
 
             Divider()
 
-            // 快捷键列表
-            VStack(spacing: 12) {
-                ShortcutRow(
-                    icon: "note.text",
-                    title: "打开便签",
-                    shortcut: viewModel.globalNoteShortcut,
-                    color: BuBuColors.mintGreen
-                )
-
-                ShortcutRow(
-                    icon: "magnifyingglass",
-                    title: "智能搜索",
-                    shortcut: viewModel.globalSearchShortcut,
-                    color: BuBuColors.skyBlue
-                )
-
-                ShortcutRow(
-                    icon: "globe",
-                    title: "快速翻译",
-                    shortcut: viewModel.globalTranslateShortcut,
-                    color: BuBuColors.lavender
-                )
+            ScrollView {
+                VStack(spacing: 20) {
+                    shortcutSection(title: "主功能", items: primaryShortcuts)
+                    shortcutSection(title: "角色与动作", items: spriteShortcuts)
+                }
+                .padding()
             }
-            .padding()
-
-            Spacer()
 
             // 提示信息
             HStack {
                 Image(systemName: "info.circle")
                     .foregroundColor(BuBuColors.skyBlue.opacity(0.7))
-                Text("快捷键功能将在后续版本中支持自定义")
+                Text("以上快捷键均可在其他应用前台时使用；后续版本支持自定义")
                     .font(BuBuFonts.caption)
                     .foregroundColor(BuBuColors.chocolateBrown.opacity(0.5))
             }
@@ -657,6 +730,25 @@ struct ShortcutsSettingsView: View {
             .background(BuBuColors.skyBlue.opacity(0.05))
         }
         .background(BuBuColors.creamWhite)
+    }
+
+    @ViewBuilder
+    private func shortcutSection(title: String, items: [ShortcutDisplayItem]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(BuBuFonts.caption)
+                .foregroundColor(BuBuColors.chocolateBrown.opacity(0.65))
+                .padding(.horizontal, 4)
+
+            ForEach(items) { item in
+                ShortcutRow(
+                    icon: item.icon,
+                    title: item.title,
+                    shortcut: item.shortcut,
+                    color: item.color
+                )
+            }
+        }
     }
 }
 

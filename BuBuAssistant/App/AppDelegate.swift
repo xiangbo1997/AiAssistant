@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var spriteViewModel = SpriteViewModel()
     private var notesViewModel = NotesViewModel()
     @MainActor private lazy var guidanceViewModel = GuidanceViewModel()
+    private lazy var chatViewModel = ChatViewModel(spriteViewModel: spriteViewModel)
     private var settingsViewModel: SettingsViewModel { SettingsViewModel.shared }
 
     // 订阅存储
@@ -117,6 +118,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// - Returns: 是否消费了该事件
     @discardableResult
     private func handleGlobalKeyEvent(_ event: NSEvent) -> Bool {
+        // 长按按键时不重复创建窗口或反复启动动作。
+        guard !event.isARepeat else { return false }
+
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let keyCode = event.keyCode
 
@@ -125,7 +129,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let searchShortcut = settingsViewModel.globalSearchShortcut
         let translateShortcut = settingsViewModel.globalTranslateShortcut
 
-        // 便签快捷键（默认 Command + Shift + N）
+        // 主功能快捷键（Command + Shift）
+        if matchShortcut(modifiers: modifiers, keyCode: keyCode, shortcut: AppShortcuts.chat, defaultMods: [.command, .shift], defaultKey: kVK_ANSI_C) {
+            DispatchQueue.main.async { [weak self] in
+                self?.showPanel(type: .chat)
+            }
+            return true
+        }
+
         if matchShortcut(modifiers: modifiers, keyCode: keyCode, shortcut: noteShortcut, defaultMods: [.command, .shift], defaultKey: kVK_ANSI_N) {
             DispatchQueue.main.async { [weak self] in
                 self?.showPanel(type: .notes)
@@ -133,7 +144,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        // 搜索快捷键（默认 Command + Shift + F）
         if matchShortcut(modifiers: modifiers, keyCode: keyCode, shortcut: searchShortcut, defaultMods: [.command, .shift], defaultKey: kVK_ANSI_F) {
             DispatchQueue.main.async { [weak self] in
                 self?.showPanel(type: .search)
@@ -141,7 +151,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        // 翻译快捷键（默认 Command + Shift + T）
         if matchShortcut(modifiers: modifiers, keyCode: keyCode, shortcut: translateShortcut, defaultMods: [.command, .shift], defaultKey: kVK_ANSI_T) {
             // 先尝试获取选中的文字
             SelectionService.shared.getSelectedTextAsync { [weak self] selectedText in
@@ -160,11 +169,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        // 备忘快捷键（默认 Command + Shift + M）
-        if modifiers == [.command, .shift] && keyCode == kVK_ANSI_M {
+        if matchShortcut(modifiers: modifiers, keyCode: keyCode, shortcut: AppShortcuts.memo, defaultMods: [.command, .shift], defaultKey: kVK_ANSI_M) {
             DispatchQueue.main.async { [weak self] in
                 self?.showPanel(type: .memo)
             }
+            return true
+        }
+
+        if matchShortcut(modifiers: modifiers, keyCode: keyCode, shortcut: AppShortcuts.guidance, defaultMods: [.command, .shift], defaultKey: kVK_ANSI_G) {
+            DispatchQueue.main.async { [weak self] in
+                self?.showGuidance()
+            }
+            return true
+        }
+
+        // 角色能力快捷键（Command + Control）
+        let spriteShortcuts: [(String, Int, () -> Void)] = [
+            (AppShortcuts.quickChat, kVK_ANSI_C, { [weak self] in self?.showSpriteQuickChat() }),
+            (AppShortcuts.screenshotTranslation, kVK_ANSI_T, { [weak self] in self?.translateScreenshot() }),
+            (AppShortcuts.toggleSprite, kVK_ANSI_B, { [weak self] in self?.toggleSpriteWindow() }),
+            (AppShortcuts.toggleDimension, kVK_ANSI_5, { [weak self] in self?.toggleSpriteDimension() }),
+            (AppShortcuts.walk, kVK_ANSI_1, { [weak self] in self?.playWalking() }),
+            (AppShortcuts.run, kVK_ANSI_2, { [weak self] in self?.playRunning() }),
+            (AppShortcuts.jump, kVK_ANSI_3, { [weak self] in self?.playJumping() }),
+            (AppShortcuts.wave, kVK_ANSI_4, { [weak self] in self?.playWaving() }),
+            (AppShortcuts.stopAction, kVK_ANSI_0, { [weak self] in self?.stopSpriteAction() })
+        ]
+
+        for (shortcut, defaultKey, action) in spriteShortcuts
+        where matchShortcut(
+            modifiers: modifiers,
+            keyCode: keyCode,
+            shortcut: shortcut,
+            defaultMods: [.command, .control],
+            defaultKey: defaultKey
+        ) {
+            DispatchQueue.main.async(execute: action)
             return true
         }
 
@@ -173,8 +213,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 匹配快捷键
     private func matchShortcut(modifiers: NSEvent.ModifierFlags, keyCode: UInt16, shortcut: String, defaultMods: NSEvent.ModifierFlags, defaultKey: Int) -> Bool {
-        // 如果快捷键为空或默认值，使用默认配置
-        if shortcut.isEmpty || shortcut == "⌘⇧N" || shortcut == "⌘⇧F" || shortcut == "⌘⇧T" {
+        // 空配置才回退默认值；非空字符串统一按同一解析器精确匹配。
+        if shortcut.isEmpty {
             return modifiers == defaultMods && keyCode == defaultKey
         }
 
@@ -239,6 +279,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 创建菜单
         let menu = NSMenu()
 
+        // 和布布聊天
+        let chatItem = NSMenuItem(title: "💬 和布布聊天", action: #selector(showChatPanel), keyEquivalent: "c")
+        chatItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(chatItem)
+
+        let quickChatItem = NSMenuItem(title: "⌨️ 角色旁快聊", action: #selector(showSpriteQuickChat), keyEquivalent: "c")
+        quickChatItem.keyEquivalentModifierMask = [.command, .control]
+        menu.addItem(quickChatItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         // 便签管理
         let notesItem = NSMenuItem(title: "📝 便签管理", action: #selector(showNotesPanel), keyEquivalent: "n")
         notesItem.keyEquivalentModifierMask = [.command, .shift]
@@ -254,6 +305,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         translateItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(translateItem)
 
+        let screenshotTranslationItem = NSMenuItem(title: "🔎 截图翻译", action: #selector(translateScreenshot), keyEquivalent: "t")
+        screenshotTranslationItem.keyEquivalentModifierMask = [.command, .control]
+        menu.addItem(screenshotTranslationItem)
+
         // 备忘
         let memoItem = NSMenuItem(title: "🔐 备忘", action: #selector(showMemoPanel), keyEquivalent: "m")
         memoItem.keyEquivalentModifierMask = [.command, .shift]
@@ -266,9 +321,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guidanceItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(guidanceItem)
 
+        // 角色动作
+        let actionsItem = NSMenuItem(title: "🎬 角色动作", action: nil, keyEquivalent: "")
+        let actionsMenu = NSMenu()
+        let actionItems: [(String, Selector, String)] = [
+            ("走路", #selector(playWalking), "1"),
+            ("跑步", #selector(playRunning), "2"),
+            ("跳跃", #selector(playJumping), "3"),
+            ("挥手", #selector(playWaving), "4"),
+            ("停止动作", #selector(stopSpriteAction), "0")
+        ]
+        for (title, selector, key) in actionItems {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+            item.keyEquivalentModifierMask = [.command, .control]
+            actionsMenu.addItem(item)
+        }
+        actionsItem.submenu = actionsMenu
+        menu.addItem(actionsItem)
+
         // 显示/隐藏精灵
-        let toggleSpriteItem = NSMenuItem(title: "👁 显示/隐藏精灵", action: #selector(toggleSpriteWindow), keyEquivalent: "")
+        let toggleSpriteItem = NSMenuItem(title: "👁 显示/隐藏精灵", action: #selector(toggleSpriteWindow), keyEquivalent: "b")
+        toggleSpriteItem.keyEquivalentModifierMask = [.command, .control]
         menu.addItem(toggleSpriteItem)
+
+        let toggleDimensionItem = NSMenuItem(title: "🧊 切换 2D/3D", action: #selector(toggleSpriteDimension), keyEquivalent: "5")
+        toggleDimensionItem.keyEquivalentModifierMask = [.command, .control]
+        menu.addItem(toggleDimensionItem)
 
         // 设置
         let settingsItem = NSMenuItem(title: "⚙️ 设置", action: #selector(showSettings), keyEquivalent: ",")
@@ -293,6 +371,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         spriteWindow = SpriteWindow(
             spriteViewModel: spriteViewModel,
             notesViewModel: notesViewModel,
+            chatViewModel: chatViewModel,
             onShowPanel: { [weak self] panelType in
                 self?.showPanel(type: panelType)
             }
@@ -336,17 +415,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func observeSettings() {
         // 监听角色变化
         settingsViewModel.$currentCharacter
+            .receive(on: RunLoop.main)
             .sink { [weak self] character in
                 self?.spriteViewModel.currentCharacter = character
             }
             .store(in: &cancellables)
 
-        // 初始化精灵设置
-        spriteViewModel.scale = settingsViewModel.spriteScale
-        spriteViewModel.opacity = settingsViewModel.spriteOpacity
+        // 外观设置必须持续同步；此前只在启动时赋值，滑块变化只能等重启后生效。
+        settingsViewModel.$spriteScale
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] scale in
+                self?.spriteViewModel.scale = CGFloat(min(max(scale, 0.5), 2.0))
+            }
+            .store(in: &cancellables)
+
+        settingsViewModel.$spriteOpacity
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] opacity in
+                self?.spriteViewModel.opacity = min(max(opacity, 0.3), 1.0)
+            }
+            .store(in: &cancellables)
+
+        settingsViewModel.$enableAnimation
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in
+                self?.spriteViewModel.isAnimating = enabled
+            }
+            .store(in: &cancellables)
+
+        settingsViewModel.$sleepDelay
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] delay in
+                self?.spriteViewModel.setSleepDelay(delay)
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - 菜单操作
+
+    @objc private func showChatPanel() {
+        showPanel(type: .chat)
+    }
 
     @objc private func showNotesPanel() {
         showPanel(type: .notes)
@@ -362,6 +475,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showMemoPanel() {
         showPanel(type: .memo)
+    }
+
+    @objc private func showSpriteQuickChat() {
+        revealSpriteWindow()
+        NotificationCenter.default.post(name: .showSpriteQuickChat, object: nil)
+    }
+
+    @objc private func translateScreenshot() {
+        revealSpriteWindow()
+        spriteViewModel.translateScreenshot()
+    }
+
+    @objc private func toggleSpriteDimension() {
+        revealSpriteWindow()
+        settingsViewModel.use3DSprite.toggle()
+    }
+
+    @objc private func playWalking() {
+        revealSpriteWindow()
+        spriteViewModel.playWalking()
+    }
+
+    @objc private func playRunning() {
+        revealSpriteWindow()
+        spriteViewModel.playRunning()
+    }
+
+    @objc private func playJumping() {
+        revealSpriteWindow()
+        spriteViewModel.showHappy()
+    }
+
+    @objc private func playWaving() {
+        revealSpriteWindow()
+        spriteViewModel.playWaving()
+    }
+
+    @objc private func stopSpriteAction() {
+        revealSpriteWindow()
+        spriteViewModel.stopCurrentAction()
+    }
+
+    private func revealSpriteWindow() {
+        if spriteWindow == nil {
+            setupSpriteWindow()
+        }
+        spriteWindow?.orderFrontRegardless()
     }
 
     @objc private func toggleSpriteWindow() {
@@ -410,6 +570,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = NSHostingView(rootView: settingsView)
         window.center()
         window.isReleasedWhenClosed = false
+        window.level = .floating
+        window.hidesOnDeactivate = false
 
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)
@@ -444,6 +606,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .environmentObject(notesViewModel)
             .environmentObject(spriteViewModel)
             .environmentObject(settingsViewModel)
+            .environmentObject(chatViewModel)
             .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
 
         let window = NSWindow(
@@ -459,6 +622,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("MainPanel")
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 400, height: 500)
+        // 主面板保持在其它应用普通窗口之上；角色使用更高的 statusBar 层级，
+        // 因而仍会自然显示在主面板前方。
+        window.level = .floating
+        window.hidesOnDeactivate = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         // 设置窗口外观
         window.titlebarAppearsTransparent = true
@@ -473,6 +641,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - 面板类型
 
 enum PanelType {
+    case chat
     case notes
     case search
     case translation
@@ -487,4 +656,5 @@ extension Notification.Name {
     static let translateSelectedText = Notification.Name("translateSelectedText")
     static let showSettings = Notification.Name("showSettings")
     static let showGuidance = Notification.Name("showGuidance")
+    static let showSpriteQuickChat = Notification.Name("showSpriteQuickChat")
 }

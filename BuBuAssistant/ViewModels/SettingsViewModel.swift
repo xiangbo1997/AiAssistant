@@ -9,6 +9,28 @@
 import SwiftUI
 import Combine
 
+/// 全局快捷键的唯一事实源：监听、菜单栏和设置页必须共同复用，避免显示与实际行为不一致。
+enum AppShortcuts {
+    // 主功能：沿用 Command + Shift 分组
+    static let chat = "⌘⇧C"
+    static let notes = "⌘⇧N"
+    static let search = "⌘⇧F"
+    static let translation = "⌘⇧T"
+    static let memo = "⌘⇧M"
+    static let guidance = "⌘⇧G"
+
+    // 角色能力：统一使用 Command + Control 分组
+    static let quickChat = "⌘⌃C"
+    static let screenshotTranslation = "⌘⌃T"
+    static let toggleSprite = "⌘⌃B"
+    static let toggleDimension = "⌘⌃5"
+    static let walk = "⌘⌃1"
+    static let run = "⌘⌃2"
+    static let jump = "⌘⌃3"
+    static let wave = "⌘⌃4"
+    static let stopAction = "⌘⌃0"
+}
+
 class SettingsViewModel: ObservableObject {
     // 单例
     static let shared = SettingsViewModel()
@@ -67,9 +89,9 @@ class SettingsViewModel: ObservableObject {
 
     // MARK: - 快捷键设置
 
-    @AppStorage("globalSearchShortcut") var globalSearchShortcut: String = "⌘⇧F"
-    @AppStorage("globalTranslateShortcut") var globalTranslateShortcut: String = "⌘⇧T"
-    @AppStorage("globalNoteShortcut") var globalNoteShortcut: String = "⌘⇧N"
+    @AppStorage("globalSearchShortcut") var globalSearchShortcut: String = AppShortcuts.search
+    @AppStorage("globalTranslateShortcut") var globalTranslateShortcut: String = AppShortcuts.translation
+    @AppStorage("globalNoteShortcut") var globalNoteShortcut: String = AppShortcuts.notes
 
     // MARK: - 初始化
 
@@ -92,7 +114,8 @@ class SettingsViewModel: ObservableObject {
         // 加载当前角色
         if let data = UserDefaults.standard.data(forKey: "currentCharacter"),
            let character = try? JSONDecoder().decode(SpriteCharacter.self, from: data) {
-            currentCharacter = character
+            // 预设角色使用代码中的最新名称，兼容旧版本持久化的“伊尔”。
+            currentCharacter = SpriteCharacter.presets.first(where: { $0.id == character.id }) ?? character
         }
 
         // 加载当前 LLM 提供商
@@ -124,39 +147,42 @@ class SettingsViewModel: ObservableObject {
     // MARK: - LLM 配置管理
 
     private func loadLLMConfigs() {
-        // 初始化默认配置
-        for provider in LLMProviderType.allCases {
-            llmConfigs[provider] = LLMConfig(provider: provider)
+        // 必须先读取持久化数据，再一次性发布完整字典。
+        // 若逐项写入 @Published 字典，didSet 会在读取旧配置前把默认值覆盖回 UserDefaults。
+        let metadata: [String: LLMConfigMetadata]
+        if let data = UserDefaults.standard.data(forKey: "llmConfigsMetadata"),
+           let saved = try? JSONDecoder().decode([String: LLMConfigMetadata].self, from: data) {
+            metadata = saved
+        } else {
+            metadata = [:]
         }
 
-        // 从 Keychain 加载 API Keys
+        var loadedConfigs: [LLMProviderType: LLMConfig] = [:]
         for provider in LLMProviderType.allCases {
+            var config = LLMConfig(provider: provider)
             if let apiKey = KeychainService.shared.getAPIKey(for: provider) {
-                llmConfigs[provider]?.apiKey = apiKey
+                config.apiKey = apiKey
             }
             if provider == .wenxin,
                let secretKey = KeychainService.shared.getSecretKey(for: provider) {
-                llmConfigs[provider]?.secretKey = secretKey
+                config.secretKey = secretKey
             }
+
+            if let meta = metadata[provider.rawValue] {
+                if !meta.baseURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                    config.baseURL = meta.baseURL
+                }
+                if !meta.model.trimmingCharacters(in: .whitespaces).isEmpty {
+                    config.model = meta.model
+                }
+                config.temperature = meta.temperature
+                config.maxTokens = meta.maxTokens
+            }
+
+            loadedConfigs[provider] = config
         }
 
-        // 从 UserDefaults 加载其他配置
-        if let data = UserDefaults.standard.data(forKey: "llmConfigsMetadata"),
-           let metadata = try? JSONDecoder().decode([String: LLMConfigMetadata].self, from: data) {
-            for (key, meta) in metadata {
-                if let provider = LLMProviderType(rawValue: key) {
-                    if !meta.baseURL.trimmingCharacters(in: .whitespaces).isEmpty {
-                        llmConfigs[provider]?.baseURL = meta.baseURL
-                    }
-                    // 模型为空时保留默认模型，避免发出空 model 的无效请求
-                    if !meta.model.trimmingCharacters(in: .whitespaces).isEmpty {
-                        llmConfigs[provider]?.model = meta.model
-                    }
-                    llmConfigs[provider]?.temperature = meta.temperature
-                    llmConfigs[provider]?.maxTokens = meta.maxTokens
-                }
-            }
-        }
+        llmConfigs = loadedConfigs
     }
 
     private func saveLLMConfigs() {

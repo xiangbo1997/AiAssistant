@@ -28,3 +28,6 @@ dist/
 
 # 代码索引缓存
 .codegraph/
+
+# Codex 本地任务审计与验证记录
+.codex/

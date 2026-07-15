@@ -28,14 +28,22 @@ struct SpriteCharacter: Identifiable, Codable, Equatable {
 
     static let yier = SpriteCharacter(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
-        name: "伊尔",
+        name: "一二",
         imageName: "yier",
         isCustom: false,
         customImagePath: nil
     )
 
+    static let yierPhone = SpriteCharacter(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+        name: "一二·手机",
+        imageName: "yier_phone",
+        isCustom: false,
+        customImagePath: nil
+    )
+
     // 所有预设角色
-    static let presets: [SpriteCharacter] = [bubu, yier]
+    static let presets: [SpriteCharacter] = [bubu, yier, yierPhone]
 }
 
 // MARK: - 动画状态
@@ -45,6 +53,9 @@ enum SpriteAnimationState: String, CaseIterable {
     case thinking   // 思考中 - 左右摇摆
     case talking    // 说话中 - 嘴巴动画
     case happy      // 开心 - 跳跃
+    case walking    // 走路 - 左右踏步
+    case running    // 跑步 - 快速踏步
+    case waving     // 挥手 - 手臂摆动
     case sleeping   // 睡眠 - 闭眼 + Zzz
 
     var description: String {
@@ -53,9 +64,69 @@ enum SpriteAnimationState: String, CaseIterable {
         case .thinking: return "思考中"
         case .talking: return "说话中"
         case .happy: return "开心"
+        case .walking: return "走路"
+        case .running: return "跑步"
+        case .waving: return "挥手"
         case .sleeping: return "睡眠"
         }
     }
+}
+
+// MARK: - 角色部位互动
+
+/// 2D 立绘与 2.5D SceneKit 共用的语义部位。
+enum SpriteBodyPart: String, Equatable {
+    case head
+    case ear
+    case eyes
+    case cheek
+    case belly
+    case arm
+    case foot
+    case phone
+
+    /// 输入坐标使用图片自身左上角为原点、宽高归一化到 0...1。
+    /// 手机必须优先于手臂/肚子，否则拿手机的角色无法进入聊天。
+    static func hitTest(normalized point: CGPoint, character: SpriteCharacter) -> SpriteBodyPart? {
+        guard (0...1).contains(point.x), (0...1).contains(point.y) else { return nil }
+
+        let x = point.x
+        let y = point.y
+        let hasPhone = character.imageName == "bubu" || character.imageName == "yier_phone"
+
+        if hasPhone, (0.20...0.66).contains(x), (0.49...0.83).contains(y) {
+            return .phone
+        }
+        if y < 0.22, x < 0.29 || x > 0.71 {
+            return .ear
+        }
+        if (0.34...0.58).contains(y),
+           (0.19...0.38).contains(x) || (0.60...0.81).contains(x) {
+            return .eyes
+        }
+        if (0.43...0.64).contains(y), x < 0.25 || x > 0.75 {
+            return .cheek
+        }
+        if y < 0.60 {
+            return .head
+        }
+        if y > 0.84, (0.12...0.88).contains(x) {
+            return .foot
+        }
+        if y < 0.86, x < 0.29 || x > 0.71 {
+            return .arm
+        }
+        if y < 0.91, (0.16...0.84).contains(x) {
+            return .belly
+        }
+        return nil
+    }
+}
+
+/// 使用独立 ID 让连续点击同一部位也能被 SwiftUI/SceneKit 观察到。
+struct SpriteInteraction: Equatable {
+    let id = UUID()
+    let part: SpriteBodyPart
 }
 
 // MARK: - 消息气泡

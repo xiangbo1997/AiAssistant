@@ -11,15 +11,23 @@ import MarkdownUI
 
 struct SpriteView: View {
     @ObservedObject var viewModel: SpriteViewModel
+    var onBodyPartTap: ((SpriteBodyPart) -> Void)? = nil
+    var onBackgroundTap: (() -> Void)? = nil
+    var onDoubleTap: (() -> Void)? = nil
 
     // 动画状态
     @State private var floatOffset: CGFloat = 0
     @State private var rotationAngle: Double = 0
     @State private var scaleEffect: CGFloat = 1.0
+    @State private var interactionOffset: CGSize = .zero
+    @State private var interactionRotation: Double = 0
+    @State private var interactionScaleX: CGFloat = 1
+    @State private var interactionScaleY: CGFloat = 1
 
     // 缓存图片避免重复加载
     @State private var cachedSpriteImage: NSImage?
     @State private var lastCharacterId: UUID?
+    @State private var spriteImageAspect: CGFloat = 1
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,6 +69,10 @@ struct SpriteView: View {
         .onChange(of: viewModel.animationState) { _, newState in
             updateAnimation(for: newState)
         }
+        .onChange(of: viewModel.latestInteraction?.id) { _, _ in
+            guard let interaction = viewModel.latestInteraction else { return }
+            playInteraction(interaction)
+        }
         .onChange(of: viewModel.isAnimating) { _, isAnimating in
             if isAnimating {
                 startAnimation()
@@ -76,10 +88,37 @@ struct SpriteView: View {
     private var spriteLayer: some View {
         spriteImageView
             .frame(width: 100 * viewModel.scale, height: 100 * viewModel.scale)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(viewModel.currentCharacter.name)角色")
+            .accessibilityHint(
+                ["bubu", "yier_phone"].contains(viewModel.currentCharacter.imageName)
+                    ? "点击手机和布布聊天；点击其他部位会有不同反应"
+                    : "点击角色互动"
+            )
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                let hasPhone = ["bubu", "yier_phone"].contains(viewModel.currentCharacter.imageName)
+                onBodyPartTap?(hasPhone ? .phone : .head)
+            }
+            .overlay {
+                SpriteClickCaptureView(
+                    onSingleClick: handleSpriteClick,
+                    onDoubleClick: { onDoubleTap?() }
+                )
+            }
             .opacity(viewModel.opacity)
-            .offset(y: floatOffset)
-            .rotationEffect(Angle(degrees: rotationAngle))
-            .scaleEffect(scaleEffect)
+            .offset(
+                x: interactionOffset.width + sleepOffset.width,
+                y: floatOffset + interactionOffset.height + sleepOffset.height
+            )
+            .rotationEffect(Angle(degrees: rotationAngle + interactionRotation + sleepRotation))
+            .scaleEffect(
+                x: -scaleEffect * interactionScaleX * sleepScale.width * viewModel.facingDirection,
+                y: scaleEffect * interactionScaleY * sleepScale.height,
+                anchor: .bottom
+            )
+            .animation(.easeInOut(duration: 0.28), value: viewModel.facingDirection)
+            .animation(.spring(response: 0.62, dampingFraction: 0.78), value: viewModel.animationState == .sleeping)
             .overlay(dragHighlight)
     }
 
@@ -96,7 +135,7 @@ struct SpriteView: View {
     private var sleepingLayer: some View {
         if viewModel.animationState == .sleeping {
             ZzzView()
-                .offset(x: 40, y: -20)
+                .offset(x: -38 * viewModel.scale, y: -25 * viewModel.scale)
         }
     }
 
@@ -112,8 +151,12 @@ struct SpriteView: View {
 
     @ViewBuilder
     private var spriteImageView: some View {
+        if usesDedicatedSleepPose {
+            Image("bubu_sleep")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         // 自定义角色：使用缓存图片，磁盘加载只在角色切换时发生（见 reloadSpriteImage）
-        if let nsImage = cachedSpriteImage {
+        } else if let nsImage = cachedSpriteImage {
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -125,17 +168,135 @@ struct SpriteView: View {
         }
     }
 
+    private var usesDedicatedSleepPose: Bool {
+        viewModel.animationState == .sleeping && viewModel.currentCharacter.imageName == "bubu"
+    }
+
+    private var sleepRotation: Double {
+        guard viewModel.animationState == .sleeping else { return 0 }
+        return usesDedicatedSleepPose ? 0 : -8
+    }
+
+    private var sleepOffset: CGSize {
+        guard viewModel.animationState == .sleeping else { return .zero }
+        return usesDedicatedSleepPose
+            ? CGSize(width: 0, height: 11 * viewModel.scale)
+            : CGSize(width: 10 * viewModel.scale, height: 28 * viewModel.scale)
+    }
+
+    private var sleepScale: CGSize {
+        guard viewModel.animationState == .sleeping else { return CGSize(width: 1, height: 1) }
+        return usesDedicatedSleepPose
+            ? CGSize(width: 1, height: 1)
+            : CGSize(width: 1.12, height: 0.72)
+    }
+
     /// 角色切换时重新加载自定义图片；在 body 里直接 NSImage(contentsOfFile:)
     /// 会导致每次视图刷新都做磁盘 I/O
     private func reloadSpriteImage() {
         guard viewModel.currentCharacter.id != lastCharacterId else { return }
         lastCharacterId = viewModel.currentCharacter.id
 
+        let image: NSImage?
         if viewModel.currentCharacter.isCustom,
            let path = viewModel.currentCharacter.customImagePath {
-            cachedSpriteImage = NSImage(contentsOfFile: path)
+            image = NSImage(contentsOfFile: path)
+            cachedSpriteImage = image
         } else {
+            image = NSImage(named: viewModel.currentCharacter.imageName)
             cachedSpriteImage = nil
+        }
+
+        if let size = image?.size, size.height > 0 {
+            spriteImageAspect = size.width / size.height
+        } else {
+            spriteImageAspect = 1
+        }
+    }
+
+    // MARK: - 部位命中与局部反馈
+
+    private func handleSpriteClick(_ point: CGPoint, _ size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+
+        let activeAspect = usesDedicatedSleepPose ? 512.0 / 416.0 : spriteImageAspect
+        let fittedSize: CGSize
+        if activeAspect >= size.width / size.height {
+            fittedSize = CGSize(width: size.width, height: size.width / max(activeAspect, 0.01))
+        } else {
+            fittedSize = CGSize(width: size.height * activeAspect, height: size.height)
+        }
+        let fittedOrigin = CGPoint(
+            x: (size.width - fittedSize.width) / 2,
+            y: (size.height - fittedSize.height) / 2
+        )
+        let topLeftPoint = CGPoint(x: point.x, y: size.height - point.y)
+        let fittedRect = CGRect(origin: fittedOrigin, size: fittedSize)
+
+        guard fittedRect.contains(topLeftPoint) else {
+            onBackgroundTap?()
+            return
+        }
+
+        let normalized = CGPoint(
+            x: (topLeftPoint.x - fittedRect.minX) / fittedRect.width,
+            y: (topLeftPoint.y - fittedRect.minY) / fittedRect.height
+        )
+        if let part = SpriteBodyPart.hitTest(normalized: normalized, character: viewModel.currentCharacter) {
+            onBodyPartTap?(part)
+        } else {
+            onBackgroundTap?()
+        }
+    }
+
+    private func playInteraction(_ interaction: SpriteInteraction) {
+        interactionOffset = .zero
+        interactionRotation = 0
+        interactionScaleX = 1
+        interactionScaleY = 1
+
+        let spring = Animation.spring(response: 0.22, dampingFraction: 0.48)
+        withAnimation(spring) {
+            switch interaction.part {
+            case .head:
+                interactionOffset.height = -5
+                interactionRotation = -5
+            case .ear:
+                interactionRotation = 8
+            case .eyes:
+                interactionScaleY = 0.78
+            case .cheek:
+                interactionOffset.width = viewModel.facingDirection * 4
+                interactionRotation = 4
+            case .belly:
+                interactionScaleX = 1.08
+                interactionScaleY = 0.92
+            case .arm:
+                interactionRotation = -4
+            case .foot:
+                interactionOffset.height = -6
+            case .phone:
+                interactionScaleX = 1.045
+                interactionScaleY = 1.045
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            guard viewModel.latestInteraction?.id == interaction.id else { return }
+            if interaction.part == .ear {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    interactionRotation = -8
+                }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+            guard viewModel.latestInteraction?.id == interaction.id else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.68)) {
+                interactionOffset = .zero
+                interactionRotation = 0
+                interactionScaleX = 1
+                interactionScaleY = 1
+            }
         }
     }
 
@@ -181,6 +342,7 @@ struct SpriteView: View {
     }
 
     private func updateAnimation(for state: SpriteAnimationState) {
+        resetAnimationStateImmediately()
         switch state {
         case .idle:
             startIdleAnimation()
@@ -190,8 +352,24 @@ struct SpriteView: View {
             startTalkingAnimation()
         case .happy:
             startHappyAnimation()
+        case .walking:
+            startWalkingAnimation()
+        case .running:
+            startRunningAnimation()
+        case .waving:
+            startWavingAnimation()
         case .sleeping:
             startSleepingAnimation()
+        }
+    }
+
+    private func resetAnimationStateImmediately() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            floatOffset = 0
+            rotationAngle = 0
+            scaleEffect = 1
         }
     }
 
@@ -245,14 +423,103 @@ struct SpriteView: View {
         }
     }
 
-    /// 睡眠动画 - 缓慢呼吸
+    private func startWalkingAnimation() {
+        withAnimation(.easeInOut(duration: 0.24).repeatForever(autoreverses: true)) {
+            floatOffset = -4
+            rotationAngle = 3
+        }
+    }
+
+    private func startRunningAnimation() {
+        withAnimation(.easeInOut(duration: 0.13).repeatForever(autoreverses: true)) {
+            floatOffset = -8
+            rotationAngle = 6
+            scaleEffect = 1.03
+        }
+    }
+
+    private func startWavingAnimation() {
+        withAnimation(.easeInOut(duration: 0.22).repeatCount(6, autoreverses: true)) {
+            rotationAngle = 4
+            floatOffset = -3
+        }
+    }
+
+    /// 睡眠动画 - 趴睡姿态持续呼吸、身体轻轻起伏。
     private func startSleepingAnimation() {
         withAnimation(
-            .easeInOut(duration: 3)
+            .easeInOut(duration: 2.4)
             .repeatForever(autoreverses: true)
         ) {
-            scaleEffect = 0.95
+            floatOffset = -3
+            scaleEffect = 1.035
+            rotationAngle = usesDedicatedSleepPose ? 0.7 : 1.2
         }
+    }
+}
+
+/// AppKit 双击优先于单击，避免“双击翻译”同时误触身体互动；
+/// `delaysPrimaryMouseButtonEvents = false` 保持透明窗口原有拖拽手感。
+private struct SpriteClickCaptureView: NSViewRepresentable {
+    let onSingleClick: (CGPoint, CGSize) -> Void
+    let onDoubleClick: () -> Void
+
+    func makeNSView(context: Context) -> SpriteClickCaptureNSView {
+        SpriteClickCaptureNSView(
+            onSingleClick: onSingleClick,
+            onDoubleClick: onDoubleClick
+        )
+    }
+
+    func updateNSView(_ nsView: SpriteClickCaptureNSView, context: Context) {
+        nsView.onSingleClick = onSingleClick
+        nsView.onDoubleClick = onDoubleClick
+    }
+}
+
+private final class SpriteClickCaptureNSView: NSView {
+    var onSingleClick: (CGPoint, CGSize) -> Void
+    var onDoubleClick: () -> Void
+
+    init(
+        onSingleClick: @escaping (CGPoint, CGSize) -> Void,
+        onDoubleClick: @escaping () -> Void
+    ) {
+        self.onSingleClick = onSingleClick
+        self.onDoubleClick = onDoubleClick
+        super.init(frame: .zero)
+
+        let single = SpriteSingleClickGestureRecognizer(target: self, action: #selector(handleSingle(_:)))
+        single.numberOfClicksRequired = 1
+        single.delaysPrimaryMouseButtonEvents = false
+
+        let double = NSClickGestureRecognizer(target: self, action: #selector(handleDouble(_:)))
+        double.numberOfClicksRequired = 2
+        double.delaysPrimaryMouseButtonEvents = false
+
+        addGestureRecognizer(double)
+        addGestureRecognizer(single)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    @objc private func handleSingle(_ recognizer: NSClickGestureRecognizer) {
+        onSingleClick(recognizer.location(in: self), bounds.size)
+    }
+
+    @objc private func handleDouble(_ recognizer: NSClickGestureRecognizer) {
+        onDoubleClick()
+    }
+}
+
+private final class SpriteSingleClickGestureRecognizer: NSClickGestureRecognizer {
+    override func shouldRequireFailure(of otherGestureRecognizer: NSGestureRecognizer) -> Bool {
+        guard let click = otherGestureRecognizer as? NSClickGestureRecognizer else { return false }
+        return click.numberOfClicksRequired > numberOfClicksRequired
     }
 }
 

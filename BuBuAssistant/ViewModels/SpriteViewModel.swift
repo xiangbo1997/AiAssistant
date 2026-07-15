@@ -19,6 +19,10 @@ class SpriteViewModel: ObservableObject {
 
     @Published var animationState: SpriteAnimationState = .idle
     @Published var isAnimating: Bool = true
+    @Published var chatExpression: ChatExpression = .idle
+    @Published private(set) var latestInteraction: SpriteInteraction?
+    /// 桌面移动方向：1 向右，-1 向左；2D/3D 渲染据此同步镜像。
+    @Published var facingDirection: CGFloat = 1
 
     // MARK: - 外观设置
 
@@ -40,6 +44,14 @@ class SpriteViewModel: ObservableObject {
 
     private var sleepTimer: Timer?
     private var sleepDelay: TimeInterval = 300 // 5分钟无操作进入睡眠
+    private var animationTestSleepDelay: TimeInterval?
+    private var boredomTimer: Timer?
+    private var boredomActionWorkItem: DispatchWorkItem?
+    private var boredomDelayRange: ClosedRange<TimeInterval> = 18...40
+    private var isPerformingBoredomAction = false
+    private var isQuickChatPresented = false
+    private var animationResetWorkItem: DispatchWorkItem?
+    private var chatReactionResetWorkItem: DispatchWorkItem?
 
     // MARK: - 订阅
 
@@ -83,9 +95,18 @@ class SpriteViewModel: ObservableObject {
     // MARK: - 初始化
 
     init() {
+        applyAnimationTestOverrides()
         loadCustomCharacters()
         startIdleAnimation()
         setupSleepTimer()
+    }
+
+    deinit {
+        sleepTimer?.invalidate()
+        boredomTimer?.invalidate()
+        animationResetWorkItem?.cancel()
+        boredomActionWorkItem?.cancel()
+        chatReactionResetWorkItem?.cancel()
     }
 
     // MARK: - 角色管理
@@ -118,8 +139,24 @@ class SpriteViewModel: ObservableObject {
         saveCustomCharacters()
     }
 
+    /// 修改自定义角色名称，并同步当前正在使用的角色。
+    func renameCustomCharacter(_ character: SpriteCharacter, to name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard character.isCustom, !trimmedName.isEmpty,
+              let index = customCharacters.firstIndex(where: { $0.id == character.id }) else { return }
+
+        customCharacters[index].name = trimmedName
+        if currentCharacter.id == character.id {
+            currentCharacter = customCharacters[index]
+        }
+        saveCustomCharacters()
+    }
+
     /// 删除自定义角色
     func removeCustomCharacter(_ character: SpriteCharacter) {
+        if character.isCustom, let path = character.customImagePath {
+            try? FileManager.default.removeItem(atPath: path)
+        }
         customCharacters.removeAll { $0.id == character.id }
         saveCustomCharacters()
 
@@ -138,12 +175,14 @@ class SpriteViewModel: ObservableObject {
 
     /// 开始待机动画
     func startIdleAnimation() {
+        animationResetWorkItem?.cancel()
         guard isAnimating else { return }
         animationState = .idle
     }
 
     /// 切换到思考状态
     func startThinking() {
+        animationResetWorkItem?.cancel()
         resetSleepTimer()
         animationState = .thinking
         showBubble(message: "思考中...", type: .thinking, duration: 0)
@@ -151,23 +190,196 @@ class SpriteViewModel: ObservableObject {
 
     /// 切换到说话状态
     func startTalking() {
+        animationResetWorkItem?.cancel()
         resetSleepTimer()
         animationState = .talking
     }
 
     /// 显示开心动画
     func showHappy() {
-        resetSleepTimer()
-        animationState = .happy
+        playTemporaryAnimation(.happy, duration: 2.0)
+    }
 
-        // 2秒后恢复待机
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+    func playWalking() {
+        playContinuousAnimation(.walking)
+    }
+
+    func playRunning() {
+        playContinuousAnimation(.running)
+    }
+
+    func playWaving() {
+        playTemporaryAnimation(.waving, duration: 2.8)
+    }
+
+    func stopCurrentAction() {
+        resetSleepTimer()
+        startIdleAnimation()
+    }
+
+    // MARK: - 模型部位互动
+
+    /// 统一处理 2D/3D 部位反馈；视图只负责命中和表现局部形变。
+    func react(to part: SpriteBodyPart) {
+        if animationState == .sleeping {
+            wakeUp()
+        } else {
+            resetSleepTimer()
+        }
+
+        if animationState == .walking || animationState == .running {
+            startIdleAnimation()
+        }
+
+        latestInteraction = SpriteInteraction(part: part)
+        chatReactionResetWorkItem?.cancel()
+
+        let reaction: (expression: ChatExpression, line: String?, state: SpriteAnimationState?, duration: TimeInterval)
+        switch part {
+        case .head:
+            reaction = (.caring, ["嘿嘿，摸摸头~", "再摸一下也可以呀"].randomElement(), .happy, 1.35)
+        case .ear:
+            reaction = (.curious, ["耳朵听到你啦~", "呀，耳朵痒痒的"].randomElement(), .thinking, 1.25)
+        case .eyes:
+            reaction = (.surprised, ["眨眨眼，看见你啦", "别戳眼睛嘛~"].randomElement(), nil, 0.75)
+        case .cheek:
+            reaction = (.happy, ["脸都被你戳红啦", "软乎乎的吧~"].randomElement(), .happy, 1.25)
+        case .belly:
+            reaction = (.surprised, ["咕噜咕噜~", "肚肚不许一直戳！"].randomElement(), .happy, 1.15)
+        case .arm:
+            reaction = (.greeting, ["嗨呀~", "挥挥手，看到你啦"].randomElement(), .waving, 2.8)
+        case .foot:
+            reaction = (.curious, ["脚脚要出发啦", "陪我走两步吧~"].randomElement(), .walking, 1.15)
+        case .phone:
+            reaction = (.listening, nil, nil, 1.2)
+        }
+
+        chatExpression = reaction.expression
+        if let line = reaction.line, !showBubble {
+            showBubble(message: line, type: .greeting, duration: 2.2)
+        }
+        if let state = reaction.state {
+            playTemporaryAnimation(state, duration: reaction.duration)
+        }
+        scheduleChatExpressionReset(after: max(reaction.duration + 0.35, 1.5))
+    }
+
+    /// 聊天输入展开期间暂停自主行为和睡眠；收起后从这次真实互动重新计时。
+    func setQuickChatPresented(_ presented: Bool) {
+        isQuickChatPresented = presented
+        if presented {
+            sleepTimer?.invalidate()
+            boredomTimer?.invalidate()
+            stopBoredomActionIfNeeded()
+        } else {
+            resetSleepTimer()
+        }
+    }
+
+    // MARK: - 聊天表情联动
+
+    func beginChatThinking(userText: String) {
+        cancelQuickTranslation()
+        chatReactionResetWorkItem?.cancel()
+        resetSleepTimer()
+        chatExpression = .thinking
+        animationState = .thinking
+        let preview = userText.count > 28 ? String(userText.prefix(28)) + "…" : userText
+        showBubble(message: "收到啦，让我想想：\(preview)", type: .thinking, duration: 0)
+    }
+
+    func beginChatSpeaking() {
+        chatReactionResetWorkItem?.cancel()
+        chatExpression = .talking
+        animationState = .talking
+        showBubble(message: "", type: .response, duration: 0, isStreaming: true)
+    }
+
+    func updateChatReplyPreview(_ reply: String) {
+        guard animationState == .talking else { return }
+        let compact = reply.replacingOccurrences(of: "\n", with: " ")
+        currentBubble?.message = compact.count > 120 ? String(compact.prefix(120)) + "…" : compact
+        currentBubble?.isStreaming = true
+    }
+
+    func finishChatReply(_ reply: String, expression: ChatExpression) {
+        chatReactionResetWorkItem?.cancel()
+        chatExpression = expression
+
+        let compact = reply.replacingOccurrences(of: "\n", with: " ")
+        let preview = compact.count > 150 ? String(compact.prefix(150)) + "…" : compact
+        showBubble(message: preview, type: .response, duration: 8, isStreaming: false)
+
+        switch expression {
+        case .greeting:
+            playWaving()
+        case .happy, .caring, .surprised:
+            showHappy()
+        case .curious:
+            animationState = .thinking
+        default:
+            startIdleAnimation()
+        }
+
+        scheduleChatExpressionReset(after: 3.2)
+    }
+
+    func failChatReaction(_ message: String) {
+        chatReactionResetWorkItem?.cancel()
+        chatExpression = .error
+        startIdleAnimation()
+        showBubble(message: "聊天失败：\(message)", type: .error, duration: 4)
+        scheduleChatExpressionReset(after: 2.6)
+    }
+
+    func stopChatReaction() {
+        chatReactionResetWorkItem?.cancel()
+        chatExpression = .idle
+        currentBubble?.isStreaming = false
+        startIdleAnimation()
+    }
+
+    private func scheduleChatExpressionReset(after delay: TimeInterval) {
+        let expression = chatExpression
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.chatExpression == expression else { return }
+            self.chatExpression = .idle
+            if self.animationState != .sleeping {
+                self.startIdleAnimation()
+            }
+        }
+        chatReactionResetWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func playContinuousAnimation(_ state: SpriteAnimationState) {
+        guard isAnimating else { return }
+        animationResetWorkItem?.cancel()
+        resetSleepTimer()
+        animationState = state
+    }
+
+    private func playTemporaryAnimation(_ state: SpriteAnimationState, duration: TimeInterval) {
+        guard isAnimating else { return }
+        animationResetWorkItem?.cancel()
+        resetSleepTimer()
+        animationState = state
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard self?.animationState == state else { return }
             self?.startIdleAnimation()
         }
+        animationResetWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
     }
 
     /// 进入睡眠状态
     func enterSleep() {
+        guard !isQuickChatPresented else { return }
+        animationResetWorkItem?.cancel()
+        boredomTimer?.invalidate()
+        boredomActionWorkItem?.cancel()
+        isPerformingBoredomAction = false
         animationState = .sleeping
         hideBubble()  // 睡眠时隐藏气泡，用 Zzz 动画代替
     }
@@ -185,16 +397,94 @@ class SpriteViewModel: ObservableObject {
         resetSleepTimer()
     }
 
+    /// 只有真实用户活动会走这里；自主动作必须绕开，保证 5 分钟后仍会睡着。
     func resetSleepTimer() {
+        stopBoredomActionIfNeeded()
         sleepTimer?.invalidate()
         sleepTimer = Timer.scheduledTimer(withTimeInterval: sleepDelay, repeats: false) { [weak self] _ in
             self?.enterSleep()
         }
+        scheduleBoredomBehavior()
     }
 
     func setSleepDelay(_ delay: TimeInterval) {
-        sleepDelay = delay
+        // 加速验收值只在显式传入环境变量时生效，避免设置订阅启动后又覆盖回 5 分钟。
+        sleepDelay = animationTestSleepDelay ?? delay
         resetSleepTimer()
+    }
+
+    // MARK: - 无聊时的自主行为
+
+    private func scheduleBoredomBehavior(after explicitDelay: TimeInterval? = nil) {
+        boredomTimer?.invalidate()
+        guard isAnimating, !isQuickChatPresented, animationState != .sleeping else { return }
+
+        let delay = explicitDelay ?? TimeInterval.random(in: boredomDelayRange)
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            self?.performBoredomBehavior()
+        }
+        boredomTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func performBoredomBehavior() {
+        guard isAnimating, !isQuickChatPresented, animationState == .idle,
+              !showBubble, !showActionMenu, !isDragOver else {
+            scheduleBoredomBehavior(after: TimeInterval.random(in: 8...14))
+            return
+        }
+
+        animationResetWorkItem?.cancel()
+        boredomActionWorkItem?.cancel()
+        isPerformingBoredomAction = true
+
+        let roll = Int.random(in: 0..<100)
+        let state: SpriteAnimationState
+        let duration: TimeInterval
+        switch roll {
+        case 0..<44:
+            state = .walking
+            duration = TimeInterval.random(in: 1.5...2.4)
+        case 44..<68:
+            state = .running
+            duration = TimeInterval.random(in: 0.75...1.25)
+        case 68..<84:
+            state = .waving
+            duration = 2.8
+        default:
+            state = .happy
+            duration = 1.35
+        }
+        animationState = state
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.isPerformingBoredomAction, self.animationState == state else { return }
+            self.isPerformingBoredomAction = false
+            self.startIdleAnimation()
+            self.scheduleBoredomBehavior()
+        }
+        boredomActionWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
+    }
+
+    private func stopBoredomActionIfNeeded() {
+        boredomTimer?.invalidate()
+        boredomActionWorkItem?.cancel()
+        guard isPerformingBoredomAction else { return }
+        isPerformingBoredomAction = false
+        startIdleAnimation()
+    }
+
+    /// Debug 验收可通过环境变量加速，正式启动未设置时保持产品时长。
+    private func applyAnimationTestOverrides() {
+        let environment = ProcessInfo.processInfo.environment
+        if let raw = environment["BUBU_SLEEP_DELAY"], let delay = TimeInterval(raw), delay > 0 {
+            animationTestSleepDelay = delay
+            sleepDelay = delay
+        }
+        if let raw = environment["BUBU_BOREDOM_DELAY"], let delay = TimeInterval(raw), delay > 0 {
+            boredomDelayRange = delay...delay
+        }
     }
 
     // MARK: - 气泡消息

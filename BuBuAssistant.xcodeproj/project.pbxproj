@@ -50,6 +50,8 @@
 		041 /* TranslationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 140 /* TranslationViewModel.swift */; };
 		042 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141 /* OCRService.swift */; };
 		043 /* SensitiveClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142 /* SensitiveClipboard.swift */; };
+		044 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 143 /* ChatViewModel.swift */; };
+		045 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144 /* ChatView.swift */; };
 		D84526A82EFE393800A47143 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D84526A72EFE393800A47143 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
@@ -97,6 +99,8 @@
 		140 /* TranslationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationViewModel.swift; sourceTree = "<group>"; };
 		141 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		142 /* SensitiveClipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitiveClipboard.swift; sourceTree = "<group>"; };
+		143 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
+		144 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		201 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		202 /* BuBuAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BuBuAssistant.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -171,6 +175,7 @@
 				108 /* SettingsViewModel.swift */,
 				133 /* GuidanceViewModel.swift */,
 				140 /* TranslationViewModel.swift */,
+				143 /* ChatViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -229,6 +234,7 @@
 				119 /* TranslationView.swift */,
 				129 /* MemoView.swift */,
 				130 /* MemoEditorView.swift */,
+				144 /* ChatView.swift */,
 			);
 			path = Panel;
 			sourceTree = "<group>";
@@ -353,6 +359,8 @@
 				041 /* TranslationViewModel.swift in Sources */,
 				042 /* OCRService.swift in Sources */,
 				043 /* SensitiveClipboard.swift in Sources */,
+				044 /* ChatViewModel.swift in Sources */,
+				045 /* ChatView.swift in Sources */,
 				022 /* BuBuTheme.swift in Sources */,
 				023 /* SelectionService.swift in Sources */,
 				024 /* SearchHistoryService.swift in Sources */,
@@ -515,7 +523,7 @@
 				CODE_SIGN_ENTITLEMENTS = BuBuAssistant/Resources/BuBuAssistant.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -545,7 +553,7 @@
 				CODE_SIGN_ENTITLEMENTS = BuBuAssistant/Resources/BuBuAssistant.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
